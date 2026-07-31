@@ -1,0 +1,906 @@
+import React, { useState, useMemo, useEffect } from "react";
+import { db } from "./firebase";
+import {
+  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc,
+} from "firebase/firestore";
+import {
+  Wrench, Users, Car, Calendar, Package, Truck, Receipt,
+  BarChart3, ClipboardCheck, Plus, X, Search, Phone, Mail,
+  ChevronRight, Trash2, Edit2, Send, AlertTriangle,
+} from "lucide-react";
+
+const NAV = [
+  { id: "dashboard", label: "Panel", icon: BarChart3 },
+  { id: "clientes", label: "Clientes", icon: Users },
+  { id: "vehiculos", label: "Vehículos", icon: Car },
+  { id: "agenda", label: "Agenda", icon: Calendar },
+  { id: "ordenes", label: "Órdenes de trabajo", icon: Wrench },
+  { id: "revisiones", label: "Revisión E/S", icon: ClipboardCheck },
+  { id: "inventario", label: "Inventario", icon: Package },
+  { id: "proveedores", label: "Proveedores", icon: Truck },
+  { id: "facturacion", label: "Facturación", icon: Receipt },
+  { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
+];
+
+const COLORS = {
+  bg: "#0e1114", surface: "#1C2226", surfaceRaised: "#242B30", border: "#2E363B",
+  textPrimary: "#EDEFF0", textSecondary: "#8B96A0", accent: "#FF6A2E",
+  accentBlue: "#4A90C2", success: "#4CAF6D", danger: "#D8564A",
+};
+
+function TicketBadge({ n }) {
+  return (
+    <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: COLORS.textSecondary, letterSpacing: "0.05em" }}>
+      #{String(n).padStart(4, "0")}
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children, wide }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(10,12,14,0.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }}>
+      <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, width: wide ? 560 : 420, maxWidth: "100%", padding: 24, maxHeight: "85vh", overflow: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+          <h3 style={{ margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontSize: 17, color: COLORS.textPrimary, fontWeight: 600 }}>{title}</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textSecondary }}>
+            <X size={18} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function FieldLabel({ children }) {
+  return <label style={{ display: "block", fontSize: 12, color: COLORS.textSecondary, marginBottom: 5, fontFamily: "'Inter', sans-serif" }}>{children}</label>;
+}
+
+const inputStyle = {
+  width: "100%", boxSizing: "border-box", background: "#14181B", border: `1px solid ${COLORS.border}`,
+  borderRadius: 6, padding: "9px 11px", color: COLORS.textPrimary, fontSize: 14, fontFamily: "'Inter', sans-serif",
+  marginBottom: 14, outline: "none",
+};
+
+const btnPrimary = {
+  background: COLORS.accent, color: "#1C0D04", border: "none", borderRadius: 6,
+  padding: "10px 16px", fontSize: 14, fontWeight: 600, cursor: "pointer",
+  fontFamily: "'Inter', sans-serif", width: "100%",
+};
+
+const btnGhost = {
+  background: "none", border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: 6,
+  cursor: "pointer", color: COLORS.textSecondary,
+};
+
+function PageHeader({ title, subtitle, action }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+      <div>
+        <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 20, fontWeight: 600, margin: "0 0 4px" }}>{title}</h2>
+        <p style={{ color: COLORS.textSecondary, fontSize: 13.5, margin: 0 }}>{subtitle}</p>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function money(n) {
+  const v = Number(n) || 0;
+  return "₡" + v.toLocaleString("es-CR", { maximumFractionDigits: 0 });
+}
+
+export default function App() {
+  const [view, setView] = useState("dashboard");
+
+  // Colecciones
+  const [clientes, setClientes] = useState([]);
+  const [vehiculos, setVehiculos] = useState([]);
+  const [citas, setCitas] = useState([]);
+  const [servicios, setServicios] = useState([]);
+  const [repuestos, setRepuestos] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
+  const [ordenes, setOrdenes] = useState([]);
+  const [revisiones, setRevisiones] = useState([]);
+  const [facturas, setFacturas] = useState([]);
+
+  useEffect(() => {
+    const subs = [
+      onSnapshot(collection(db, "clientes"), (s) => setClientes(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, "vehiculos"), (s) => setVehiculos(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, "citas"), (s) => setCitas(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, "servicios"), (s) => setServicios(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, "repuestos"), (s) => setRepuestos(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, "proveedores"), (s) => setProveedores(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, "ordenes"), (s) => setOrdenes(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, "revisiones"), (s) => setRevisiones(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, "facturas"), (s) => setFacturas(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+    ];
+    return () => subs.forEach((u) => u());
+  }, []);
+
+  // ---------- Clientes ----------
+  const [search, setSearch] = useState("");
+  const [showClienteModal, setShowClienteModal] = useState(false);
+  const [editingCliente, setEditingCliente] = useState(null);
+  const [clienteForm, setClienteForm] = useState({ nombre: "", telefono: "", correo: "" });
+
+  const filteredClientes = useMemo(() => {
+    const q = search.toLowerCase();
+    return clientes.filter((c) => c.nombre?.toLowerCase().includes(q) || c.telefono?.includes(q));
+  }, [clientes, search]);
+
+  const vehiculosByCliente = (clienteId) => vehiculos.filter((v) => v.clienteId === clienteId);
+
+  function openNewCliente() { setEditingCliente(null); setClienteForm({ nombre: "", telefono: "", correo: "" }); setShowClienteModal(true); }
+  function openEditCliente(c) { setEditingCliente(c.id); setClienteForm({ nombre: c.nombre, telefono: c.telefono, correo: c.correo || "" }); setShowClienteModal(true); }
+  async function saveCliente() {
+    if (!clienteForm.nombre.trim()) return;
+    if (editingCliente) await updateDoc(doc(db, "clientes", editingCliente), clienteForm);
+    else await addDoc(collection(db, "clientes"), clienteForm);
+    setShowClienteModal(false);
+  }
+  async function deleteCliente(id) {
+    await deleteDoc(doc(db, "clientes", id));
+    await Promise.all(vehiculos.filter((v) => v.clienteId === id).map((v) => deleteDoc(doc(db, "vehiculos", v.id))));
+  }
+
+  // ---------- Vehículos ----------
+  const [showVehiculoModal, setShowVehiculoModal] = useState(false);
+  const [editingVehiculo, setEditingVehiculo] = useState(null);
+  const [vehiculoForm, setVehiculoForm] = useState({ clienteId: "", placa: "", marca: "", modelo: "", anio: "", km: "" });
+
+  function openNewVehiculo(clienteId) { setEditingVehiculo(null); setVehiculoForm({ clienteId: clienteId || "", placa: "", marca: "", modelo: "", anio: "", km: "" }); setShowVehiculoModal(true); }
+  function openEditVehiculo(v) { setEditingVehiculo(v.id); setVehiculoForm({ clienteId: v.clienteId, placa: v.placa, marca: v.marca, modelo: v.modelo, anio: v.anio, km: v.km }); setShowVehiculoModal(true); }
+  async function saveVehiculo() {
+    if (!vehiculoForm.placa.trim() || !vehiculoForm.clienteId) return;
+    if (editingVehiculo) await updateDoc(doc(db, "vehiculos", editingVehiculo), vehiculoForm);
+    else await addDoc(collection(db, "vehiculos"), vehiculoForm);
+    setShowVehiculoModal(false);
+  }
+  async function deleteVehiculo(id) { await deleteDoc(doc(db, "vehiculos", id)); }
+
+  // ---------- Agenda ----------
+  const [showCitaModal, setShowCitaModal] = useState(false);
+  const [editingCita, setEditingCita] = useState(null);
+  const [citaForm, setCitaForm] = useState({ clienteId: "", vehiculoId: "", fecha: "", hora: "", servicio: "", estado: "pendiente" });
+
+  const citasOrdenadas = useMemo(() => [...citas].sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)), [citas]);
+
+  function openNewCita() { setEditingCita(null); setCitaForm({ clienteId: "", vehiculoId: "", fecha: "", hora: "", servicio: "", estado: "pendiente" }); setShowCitaModal(true); }
+  function openEditCita(c) { setEditingCita(c.id); setCitaForm({ clienteId: c.clienteId, vehiculoId: c.vehiculoId, fecha: c.fecha, hora: c.hora, servicio: c.servicio, estado: c.estado || "pendiente" }); setShowCitaModal(true); }
+  async function saveCita() {
+    if (!citaForm.clienteId || !citaForm.fecha || !citaForm.hora) return;
+    if (editingCita) await updateDoc(doc(db, "citas", editingCita), citaForm);
+    else await addDoc(collection(db, "citas"), citaForm);
+    setShowCitaModal(false);
+  }
+  async function deleteCita(id) { await deleteDoc(doc(db, "citas", id)); }
+  async function toggleEstadoCita(c) {
+    const siguiente = c.estado === "confirmada" ? "completada" : c.estado === "completada" ? "pendiente" : "confirmada";
+    await updateDoc(doc(db, "citas", c.id), { estado: siguiente });
+  }
+
+  // ---------- Proveedores ----------
+  const [showProveedorModal, setShowProveedorModal] = useState(false);
+  const [editingProveedor, setEditingProveedor] = useState(null);
+  const [proveedorForm, setProveedorForm] = useState({ nombre: "", contacto: "", telefono: "", suministra: "" });
+
+  function openNewProveedor() { setEditingProveedor(null); setProveedorForm({ nombre: "", contacto: "", telefono: "", suministra: "" }); setShowProveedorModal(true); }
+  function openEditProveedor(p) { setEditingProveedor(p.id); setProveedorForm({ nombre: p.nombre, contacto: p.contacto || "", telefono: p.telefono || "", suministra: p.suministra || "" }); setShowProveedorModal(true); }
+  async function saveProveedor() {
+    if (!proveedorForm.nombre.trim()) return;
+    if (editingProveedor) await updateDoc(doc(db, "proveedores", editingProveedor), proveedorForm);
+    else await addDoc(collection(db, "proveedores"), proveedorForm);
+    setShowProveedorModal(false);
+  }
+  async function deleteProveedor(id) { await deleteDoc(doc(db, "proveedores", id)); }
+
+  // ---------- Inventario (repuestos) ----------
+  const [showRepuestoModal, setShowRepuestoModal] = useState(false);
+  const [editingRepuesto, setEditingRepuesto] = useState(null);
+  const [repuestoForm, setRepuestoForm] = useState({ nombre: "", stock: "", precioCompra: "", precioVenta: "", proveedorId: "" });
+
+  function openNewRepuesto() { setEditingRepuesto(null); setRepuestoForm({ nombre: "", stock: "", precioCompra: "", precioVenta: "", proveedorId: "" }); setShowRepuestoModal(true); }
+  function openEditRepuesto(r) { setEditingRepuesto(r.id); setRepuestoForm({ nombre: r.nombre, stock: r.stock, precioCompra: r.precioCompra, precioVenta: r.precioVenta, proveedorId: r.proveedorId || "" }); setShowRepuestoModal(true); }
+  async function saveRepuesto() {
+    if (!repuestoForm.nombre.trim()) return;
+    const payload = { ...repuestoForm, stock: Number(repuestoForm.stock) || 0, precioCompra: Number(repuestoForm.precioCompra) || 0, precioVenta: Number(repuestoForm.precioVenta) || 0 };
+    if (editingRepuesto) await updateDoc(doc(db, "repuestos", editingRepuesto), payload);
+    else await addDoc(collection(db, "repuestos"), payload);
+    setShowRepuestoModal(false);
+  }
+  async function deleteRepuesto(id) { await deleteDoc(doc(db, "repuestos", id)); }
+
+  // ---------- Catálogo de servicios ----------
+  const [nuevoServicioNombre, setNuevoServicioNombre] = useState("");
+  const [nuevoServicioPrecio, setNuevoServicioPrecio] = useState("");
+  async function agregarServicio() {
+    if (!nuevoServicioNombre.trim()) return;
+    await addDoc(collection(db, "servicios"), { nombre: nuevoServicioNombre, precio: Number(nuevoServicioPrecio) || 0 });
+    setNuevoServicioNombre(""); setNuevoServicioPrecio("");
+  }
+  async function eliminarServicio(id) { await deleteDoc(doc(db, "servicios", id)); }
+
+  // ---------- Órdenes de trabajo ----------
+  const [showOrdenModal, setShowOrdenModal] = useState(false);
+  const [editingOrden, setEditingOrden] = useState(null);
+  const [ordenForm, setOrdenForm] = useState({ vehiculoId: "", items: [], manoObra: "", estado: "abierta", fecha: "" });
+  const [itemTipo, setItemTipo] = useState("servicio");
+  const [itemSeleccionId, setItemSeleccionId] = useState("");
+  const [itemCantidad, setItemCantidad] = useState("1");
+
+  const costoOrdenActual = useMemo(() => {
+    const itemsTotal = ordenForm.items.reduce((sum, it) => sum + it.precio * it.cantidad, 0);
+    return itemsTotal + (Number(ordenForm.manoObra) || 0);
+  }, [ordenForm.items, ordenForm.manoObra]);
+
+  function openNewOrden() {
+    setEditingOrden(null);
+    setOrdenForm({ vehiculoId: "", items: [], manoObra: "", estado: "abierta", fecha: new Date().toISOString().slice(0, 10) });
+    setShowOrdenModal(true);
+  }
+  function openEditOrden(o) {
+    setEditingOrden(o.id);
+    setOrdenForm({ vehiculoId: o.vehiculoId, items: o.items || [], manoObra: o.manoObra || "", estado: o.estado || "abierta", fecha: o.fecha || "" });
+    setShowOrdenModal(true);
+  }
+  function agregarItemOrden() {
+    if (!itemSeleccionId) return;
+    const cantidad = Number(itemCantidad) || 1;
+    if (itemTipo === "servicio") {
+      const s = servicios.find((x) => x.id === itemSeleccionId);
+      if (!s) return;
+      setOrdenForm({ ...ordenForm, items: [...ordenForm.items, { tipo: "servicio", refId: s.id, nombre: s.nombre, precio: s.precio, cantidad }] });
+    } else {
+      const r = repuestos.find((x) => x.id === itemSeleccionId);
+      if (!r) return;
+      setOrdenForm({ ...ordenForm, items: [...ordenForm.items, { tipo: "repuesto", refId: r.id, nombre: r.nombre, precio: r.precioVenta, cantidad }] });
+    }
+    setItemSeleccionId(""); setItemCantidad("1");
+  }
+  function quitarItemOrden(idx) {
+    setOrdenForm({ ...ordenForm, items: ordenForm.items.filter((_, i) => i !== idx) });
+  }
+  async function saveOrden() {
+    if (!ordenForm.vehiculoId) return;
+    const vehiculo = vehiculos.find((v) => v.id === ordenForm.vehiculoId);
+    const payload = { ...ordenForm, clienteId: vehiculo?.clienteId || "", costoTotal: costoOrdenActual };
+    if (editingOrden) {
+      await updateDoc(doc(db, "ordenes", editingOrden), payload);
+    } else {
+      await addDoc(collection(db, "ordenes"), payload);
+      // Descuenta stock de repuestos usados
+      for (const it of ordenForm.items) {
+        if (it.tipo === "repuesto") {
+          const r = repuestos.find((x) => x.id === it.refId);
+          if (r) await updateDoc(doc(db, "repuestos", r.id), { stock: Math.max(0, (Number(r.stock) || 0) - it.cantidad) });
+        }
+      }
+    }
+    setShowOrdenModal(false);
+  }
+  async function deleteOrden(id) { await deleteDoc(doc(db, "ordenes", id)); }
+  async function cambiarEstadoOrden(o, estado) { await updateDoc(doc(db, "ordenes", o.id), { estado }); }
+
+  // ---------- Revisión E/S ----------
+  const [showRevisionModal, setShowRevisionModal] = useState(false);
+  const CHECKLIST_ITEMS = ["Luces", "Llantas", "Frenos", "Fluidos", "Carrocería", "Batería"];
+  const [revisionForm, setRevisionForm] = useState({ ordenId: "", tipo: "entrada", km: "", notas: "", checklist: {} });
+
+  function openNewRevision() {
+    setRevisionForm({ ordenId: "", tipo: "entrada", km: "", notas: "", checklist: {} });
+    setShowRevisionModal(true);
+  }
+  function toggleChecklistItem(item) {
+    setRevisionForm({ ...revisionForm, checklist: { ...revisionForm.checklist, [item]: !revisionForm.checklist[item] } });
+  }
+  async function saveRevision() {
+    if (!revisionForm.ordenId) return;
+    await addDoc(collection(db, "revisiones"), revisionForm);
+    setShowRevisionModal(false);
+  }
+  async function deleteRevision(id) { await deleteDoc(doc(db, "revisiones", id)); }
+
+  // ---------- Facturación ----------
+  const [showFacturaModal, setShowFacturaModal] = useState(false);
+  const [facturaForm, setFacturaForm] = useState({ ordenId: "", monto: "", estadoEnvio: "pendiente" });
+
+  function openNewFactura() { setFacturaForm({ ordenId: "", monto: "", estadoEnvio: "pendiente" }); setShowFacturaModal(true); }
+  function seleccionarOrdenFactura(ordenId) {
+    const o = ordenes.find((x) => x.id === ordenId);
+    setFacturaForm({ ordenId, monto: o ? o.costoTotal : "", estadoEnvio: "pendiente" });
+  }
+  async function saveFactura() {
+    if (!facturaForm.ordenId) return;
+    const o = ordenes.find((x) => x.id === facturaForm.ordenId);
+    await addDoc(collection(db, "facturas"), { ...facturaForm, clienteId: o?.clienteId || "", fecha: new Date().toISOString().slice(0, 10) });
+    setShowFacturaModal(false);
+  }
+  async function deleteFactura(id) { await deleteDoc(doc(db, "facturas", id)); }
+  async function marcarEnviada(f) {
+    // Integración de envío por correo: conectar aquí EmailJS (@emailjs/browser) con tu service/template ID.
+    // emailjs.send('TU_SERVICE_ID', 'TU_TEMPLATE_ID', { ...datos }, 'TU_PUBLIC_KEY')
+    await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
+  }
+
+  // ---------- Estadísticas ----------
+  const stats = useMemo(() => {
+    const ingresos = facturas.reduce((sum, f) => sum + (Number(f.monto) || 0), 0);
+    const ordenesCompletadas = ordenes.filter((o) => o.estado === "completada").length;
+    const conteoServicios = {};
+    ordenes.forEach((o) => (o.items || []).forEach((it) => {
+      if (it.tipo === "servicio") conteoServicios[it.nombre] = (conteoServicios[it.nombre] || 0) + 1;
+    }));
+    const topServicios = Object.entries(conteoServicios).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const maxConteo = topServicios.length ? topServicios[0][1] : 1;
+    return { ingresos, ordenesCompletadas, topServicios, maxConteo };
+  }, [facturas, ordenes]);
+
+  return (
+    <div style={{ fontFamily: "'Inter', sans-serif", background: COLORS.bg, minHeight: "100vh", display: "flex", color: COLORS.textPrimary }}>
+      <div style={{ width: 216, background: "#191F23", borderRight: `1px solid ${COLORS.border}`, padding: "20px 12px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 8px 22px", borderBottom: `1px solid ${COLORS.border}`, marginBottom: 14 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 7, background: COLORS.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Wrench size={16} color="#1C0D04" />
+          </div>
+          <div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 14.5, lineHeight: 1.1 }}>Taller</div>
+            <div style={{ fontSize: 10.5, color: COLORS.textSecondary, letterSpacing: "0.06em" }}>SISTEMA DE GESTIÓN</div>
+          </div>
+        </div>
+        {NAV.map((item) => {
+          const Icon = item.icon;
+          const active = view === item.id;
+          return (
+            <div key={item.id} onClick={() => setView(item.id)}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 6, cursor: "pointer", marginBottom: 2, fontSize: 13.5,
+                background: active ? COLORS.surfaceRaised : "transparent", color: active ? COLORS.textPrimary : "#9AA3A8",
+                borderLeft: active ? `2px solid ${COLORS.accent}` : "2px solid transparent" }}>
+              <Icon size={16} />
+              {item.label}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ flex: 1, padding: "22px 28px", overflow: "auto" }}>
+
+        {view === "dashboard" && (
+          <div>
+            <PageHeader title="Panel general" subtitle="Resumen del taller hoy" />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+              {[
+                { label: "Vehículos registrados", value: vehiculos.length },
+                { label: "Citas agendadas", value: citas.length },
+                { label: "Clientes registrados", value: clientes.length },
+                { label: "Órdenes abiertas", value: ordenes.filter((o) => o.estado !== "completada").length },
+              ].map((s, i) => (
+                <div key={i} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: 16 }}>
+                  <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>{s.label}</div>
+                  <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 25, fontWeight: 600 }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+              <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: 16 }}>
+                <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>Ingresos totales facturados</div>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 600 }}>{money(stats.ingresos)}</div>
+              </div>
+              <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: 16 }}>
+                <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>Órdenes completadas</div>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 600 }}>{stats.ordenesCompletadas}</div>
+              </div>
+              <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: 16 }}>
+                <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>Repuestos con bajo stock</div>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 600, color: repuestos.some(r => Number(r.stock) < 5) ? COLORS.danger : COLORS.textPrimary }}>
+                  {repuestos.filter((r) => Number(r.stock) < 5).length}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === "clientes" && (
+          <div>
+            <PageHeader title="Clientes" subtitle={`${clientes.length} clientes registrados`}
+              action={<button onClick={openNewCliente} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo cliente</button>} />
+            <div style={{ position: "relative", marginBottom: 16 }}>
+              <Search size={15} style={{ position: "absolute", left: 11, top: 11, color: COLORS.textSecondary }} />
+              <input placeholder="Buscar por nombre o teléfono..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, paddingLeft: 34, marginBottom: 0 }} />
+            </div>
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+              {filteredClientes.map((c, i) => (
+                <div key={c.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 8, background: COLORS.surfaceRaised, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 13.5, color: COLORS.accent }}>
+                      {c.nombre?.split(" ").map((w) => w[0]).slice(0, 2).join("")}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14.5, fontWeight: 500 }}>{c.nombre}</div>
+                      <div style={{ display: "flex", gap: 14, marginTop: 3 }}>
+                        <span style={{ fontSize: 12.5, color: COLORS.textSecondary, display: "flex", alignItems: "center", gap: 4 }}><Phone size={11} /> {c.telefono}</span>
+                        {c.correo && <span style={{ fontSize: 12.5, color: COLORS.textSecondary, display: "flex", alignItems: "center", gap: 4 }}><Mail size={11} /> {c.correo}</span>}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#5D6870", marginTop: 4 }}>
+                        {vehiculosByCliente(c.id).length} vehículo{vehiculosByCliente(c.id).length !== 1 ? "s" : ""}{vehiculosByCliente(c.id).map((v) => ` · ${v.placa}`).join("")}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <TicketBadge n={i + 1} />
+                    <button onClick={() => openNewVehiculo(c.id)} title="Agregar vehículo" style={{ ...btnGhost, marginLeft: 8 }}><Car size={14} /></button>
+                    <button onClick={() => openEditCliente(c)} title="Editar" style={btnGhost}><Edit2 size={14} /></button>
+                    <button onClick={() => deleteCliente(c.id)} title="Eliminar" style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
+                  </div>
+                </div>
+              ))}
+              {filteredClientes.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13.5, padding: 20, textAlign: "center" }}>No se encontraron clientes.</div>}
+            </div>
+          </div>
+        )}
+
+        {view === "vehiculos" && (
+          <div>
+            <PageHeader title="Vehículos" subtitle={`${vehiculos.length} vehículos registrados`}
+              action={<button onClick={() => openNewVehiculo(null)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo vehículo</button>} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+              {vehiculos.map((v, i) => {
+                const cliente = clientes.find((c) => c.id === v.clienteId);
+                return (
+                  <div key={v.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, fontWeight: 500, background: COLORS.surfaceRaised, padding: "4px 9px", borderRadius: 5, letterSpacing: "0.04em" }}>{v.placa}</div>
+                      <TicketBadge n={i + 1} />
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 2 }}>{v.marca} {v.modelo}</div>
+                    <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginBottom: 10 }}>Año {v.anio} · {v.km} km</div>
+                    <div style={{ borderTop: `1px dashed ${COLORS.border}`, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ fontSize: 12.5, color: "#9AA3A8", display: "flex", alignItems: "center", gap: 5 }}><Users size={12} /> {cliente ? cliente.nombre : "Sin cliente"}</div>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button onClick={() => openEditVehiculo(v)} style={btnGhost}><Edit2 size={13} /></button>
+                        <button onClick={() => deleteVehiculo(v.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={13} /></button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {vehiculos.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13.5, padding: 20, textAlign: "center", gridColumn: "1 / -1" }}>No hay vehículos registrados todavía.</div>}
+            </div>
+          </div>
+        )}
+
+        {view === "agenda" && (
+          <div>
+            <PageHeader title="Agenda" subtitle={`${citas.length} citas registradas`}
+              action={<button onClick={openNewCita} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva cita</button>} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {citasOrdenadas.map((c) => {
+                const cliente = clientes.find((x) => x.id === c.clienteId);
+                const vehiculo = vehiculos.find((x) => x.id === c.vehiculoId);
+                const estadoColor = c.estado === "confirmada" ? COLORS.accentBlue : c.estado === "completada" ? COLORS.success : COLORS.textSecondary;
+                return (
+                  <div key={c.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      <div style={{ textAlign: "center", minWidth: 54 }}>
+                        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 15 }}>{c.hora || "--:--"}</div>
+                        <div style={{ fontSize: 11, color: COLORS.textSecondary, fontFamily: "'IBM Plex Mono', monospace" }}>{c.fecha}</div>
+                      </div>
+                      <div style={{ width: 1, height: 34, background: COLORS.border }} />
+                      <div>
+                        <div style={{ fontSize: 14.5, fontWeight: 500 }}>{c.servicio || "Servicio sin especificar"}</div>
+                        <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginTop: 3 }}>{cliente ? cliente.nombre : "Sin cliente"}{vehiculo ? ` · ${vehiculo.placa}` : ""}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span onClick={() => toggleEstadoCita(c)} style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, cursor: "pointer", color: estadoColor, border: `1px solid ${estadoColor}`, textTransform: "capitalize" }}>{c.estado || "pendiente"}</span>
+                      <button onClick={() => openEditCita(c)} style={btnGhost}><Edit2 size={14} /></button>
+                      <button onClick={() => deleteCita(c.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+              {citasOrdenadas.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13.5, padding: 20, textAlign: "center" }}>No hay citas agendadas todavía.</div>}
+            </div>
+          </div>
+        )}
+
+        {view === "ordenes" && (
+          <div>
+            <PageHeader title="Órdenes de trabajo" subtitle={`${ordenes.length} órdenes registradas`}
+              action={<button onClick={openNewOrden} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva orden</button>} />
+
+            <div style={{ background: COLORS.surface, border: `1px dashed ${COLORS.border}`, borderRadius: 9, padding: 14, marginBottom: 16 }}>
+              <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginBottom: 10 }}>Catálogo de servicios del taller</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                {servicios.map((s) => (
+                  <span key={s.id} style={{ fontSize: 12, background: COLORS.surfaceRaised, borderRadius: 20, padding: "5px 10px", display: "flex", alignItems: "center", gap: 6 }}>
+                    {s.nombre} · {money(s.precio)}
+                    <X size={11} style={{ cursor: "pointer", color: COLORS.textSecondary }} onClick={() => eliminarServicio(s.id)} />
+                  </span>
+                ))}
+                {servicios.length === 0 && <span style={{ fontSize: 12.5, color: COLORS.textSecondary }}>Aún no has agregado servicios.</span>}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input placeholder="Nombre del servicio" value={nuevoServicioNombre} onChange={(e) => setNuevoServicioNombre(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 2 }} />
+                <input placeholder="Precio" value={nuevoServicioPrecio} onChange={(e) => setNuevoServicioPrecio(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
+                <button onClick={agregarServicio} style={{ ...btnPrimary, width: "auto", padding: "0 14px" }}>Agregar</button>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {ordenes.map((o, i) => {
+                const vehiculo = vehiculos.find((v) => v.id === o.vehiculoId);
+                const cliente = clientes.find((c) => c.id === o.clienteId);
+                const estadoColor = o.estado === "completada" ? COLORS.success : o.estado === "en_progreso" ? COLORS.accentBlue : COLORS.textSecondary;
+                return (
+                  <div key={o.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13.5 }}>{vehiculo?.placa || "—"}</span>
+                          <TicketBadge n={i + 1} />
+                        </div>
+                        <div style={{ fontSize: 13.5, color: COLORS.textSecondary, marginTop: 4 }}>{cliente?.nombre || "Sin cliente"} · {o.fecha}</div>
+                        <div style={{ fontSize: 12.5, color: "#7A848C", marginTop: 4 }}>{(o.items || []).length} ítem(s)</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 17, fontWeight: 600 }}>{money(o.costoTotal)}</div>
+                        <select value={o.estado} onChange={(e) => cambiarEstadoOrden(o, e.target.value)}
+                          style={{ marginTop: 6, fontSize: 11.5, background: "transparent", color: estadoColor, border: `1px solid ${estadoColor}`, borderRadius: 20, padding: "3px 8px" }}>
+                          <option value="abierta">Abierta</option>
+                          <option value="en_progreso">En progreso</option>
+                          <option value="completada">Completada</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 4, marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 }}>
+                      <button onClick={() => openEditOrden(o)} style={btnGhost}><Edit2 size={13} /></button>
+                      <button onClick={() => deleteOrden(o.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={13} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+              {ordenes.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13.5, padding: 20, textAlign: "center" }}>No hay órdenes de trabajo todavía.</div>}
+            </div>
+          </div>
+        )}
+
+        {view === "revisiones" && (
+          <div>
+            <PageHeader title="Revisión de entrada y salida" subtitle={`${revisiones.length} revisiones registradas`}
+              action={<button onClick={openNewRevision} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva revisión</button>} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {revisiones.map((r) => {
+                const o = ordenes.find((x) => x.id === r.ordenId);
+                const vehiculo = vehiculos.find((v) => v.id === o?.vehiculoId);
+                const items = Object.entries(r.checklist || {}).filter(([, v]) => v).map(([k]) => k);
+                return (
+                  <div key={r.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <div>
+                        <span style={{ fontSize: 11.5, padding: "3px 9px", borderRadius: 20, border: `1px solid ${COLORS.accent}`, color: COLORS.accent, textTransform: "capitalize" }}>{r.tipo}</span>
+                        <div style={{ fontSize: 14, fontWeight: 500, marginTop: 8 }}>{vehiculo?.placa || "Vehículo no asociado"}</div>
+                        <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginTop: 3 }}>Kilometraje: {r.km || "—"}</div>
+                        {items.length > 0 && <div style={{ fontSize: 12, color: "#7A848C", marginTop: 4 }}>Verificado: {items.join(", ")}</div>}
+                        {r.notas && <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginTop: 6, fontStyle: "italic" }}>"{r.notas}"</div>}
+                      </div>
+                      <button onClick={() => deleteRevision(r.id)} style={{ ...btnGhost, color: COLORS.danger, height: 28 }}><Trash2 size={13} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+              {revisiones.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13.5, padding: 20, textAlign: "center" }}>No hay revisiones registradas todavía.</div>}
+            </div>
+          </div>
+        )}
+
+        {view === "inventario" && (
+          <div>
+            <PageHeader title="Inventario de repuestos" subtitle={`${repuestos.length} repuestos registrados`}
+              action={<button onClick={openNewRepuesto} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo repuesto</button>} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+              {repuestos.map((r) => {
+                const proveedor = proveedores.find((p) => p.id === r.proveedorId);
+                const bajoStock = Number(r.stock) < 5;
+                return (
+                  <div key={r.id} style={{ background: COLORS.surface, border: `1px solid ${bajoStock ? COLORS.danger : COLORS.border}`, borderRadius: 9, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div>
+                        <div style={{ fontSize: 14.5, fontWeight: 500 }}>{r.nombre}</div>
+                        <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginTop: 4 }}>Compra {money(r.precioCompra)} · Venta {money(r.precioVenta)}</div>
+                        {proveedor && <div style={{ fontSize: 12, color: "#7A848C", marginTop: 4 }}>Proveedor: {proveedor.nombre}</div>}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 18, fontWeight: 600, color: bajoStock ? COLORS.danger : COLORS.textPrimary, display: "flex", alignItems: "center", gap: 5 }}>
+                          {bajoStock && <AlertTriangle size={14} />} {r.stock}
+                        </div>
+                        <div style={{ fontSize: 11, color: COLORS.textSecondary }}>en stock</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 4, marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 }}>
+                      <button onClick={() => openEditRepuesto(r)} style={btnGhost}><Edit2 size={13} /></button>
+                      <button onClick={() => deleteRepuesto(r.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={13} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+              {repuestos.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13.5, padding: 20, textAlign: "center", gridColumn: "1 / -1" }}>No hay repuestos registrados todavía.</div>}
+            </div>
+          </div>
+        )}
+
+        {view === "proveedores" && (
+          <div>
+            <PageHeader title="Proveedores" subtitle={`${proveedores.length} proveedores registrados`}
+              action={<button onClick={openNewProveedor} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo proveedor</button>} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {proveedores.map((p) => (
+                <div key={p.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 14.5, fontWeight: 500 }}>{p.nombre}</div>
+                    <div style={{ display: "flex", gap: 14, marginTop: 4 }}>
+                      {p.contacto && <span style={{ fontSize: 12.5, color: COLORS.textSecondary }}>{p.contacto}</span>}
+                      {p.telefono && <span style={{ fontSize: 12.5, color: COLORS.textSecondary, display: "flex", alignItems: "center", gap: 4 }}><Phone size={11} /> {p.telefono}</span>}
+                    </div>
+                    {p.suministra && <div style={{ fontSize: 12, color: "#7A848C", marginTop: 4 }}>Suministra: {p.suministra}</div>}
+                  </div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button onClick={() => openEditProveedor(p)} style={btnGhost}><Edit2 size={14} /></button>
+                    <button onClick={() => deleteProveedor(p.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
+                  </div>
+                </div>
+              ))}
+              {proveedores.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13.5, padding: 20, textAlign: "center" }}>No hay proveedores registrados todavía.</div>}
+            </div>
+          </div>
+        )}
+
+        {view === "facturacion" && (
+          <div>
+            <PageHeader title="Facturación" subtitle={`${facturas.length} facturas emitidas`}
+              action={<button onClick={openNewFactura} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Generar factura</button>} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {facturas.map((f, i) => {
+                const cliente = clientes.find((c) => c.id === f.clienteId);
+                return (
+                  <div key={f.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <TicketBadge n={i + 1} />
+                      <div>
+                        <div style={{ fontSize: 14.5, fontWeight: 500 }}>{cliente?.nombre || "Cliente"}</div>
+                        <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginTop: 3 }}>{f.fecha}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, fontWeight: 600 }}>{money(f.monto)}</div>
+                      <span style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, color: f.estadoEnvio === "enviada" ? COLORS.success : COLORS.textSecondary, border: `1px solid ${f.estadoEnvio === "enviada" ? COLORS.success : COLORS.border}` }}>{f.estadoEnvio}</span>
+                      {f.estadoEnvio !== "enviada" && (
+                        <button onClick={() => marcarEnviada(f)} title="Enviar por correo" style={btnGhost}><Send size={14} /></button>
+                      )}
+                      <button onClick={() => deleteFactura(f.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+              {facturas.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13.5, padding: 20, textAlign: "center" }}>No hay facturas generadas todavía.</div>}
+            </div>
+          </div>
+        )}
+
+        {view === "estadisticas" && (
+          <div>
+            <PageHeader title="Estadísticas" subtitle="Ingresos y desempeño del taller" />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 20 }}>
+              <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: 16 }}>
+                <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>Ingresos totales facturados</div>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 26, fontWeight: 600 }}>{money(stats.ingresos)}</div>
+              </div>
+              <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: 16 }}>
+                <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>Órdenes completadas</div>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 26, fontWeight: 600 }}>{stats.ordenesCompletadas}</div>
+              </div>
+            </div>
+            <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: 18 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 500, marginBottom: 14 }}>Servicios más solicitados</div>
+              {stats.topServicios.map(([nombre, count]) => (
+                <div key={nombre} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 }}>
+                    <span>{nombre}</span><span style={{ color: COLORS.textSecondary }}>{count}</span>
+                  </div>
+                  <div style={{ height: 6, background: COLORS.surfaceRaised, borderRadius: 4 }}>
+                    <div style={{ height: 6, width: `${(count / stats.maxConteo) * 100}%`, background: COLORS.accent, borderRadius: 4 }} />
+                  </div>
+                </div>
+              ))}
+              {stats.topServicios.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13 }}>Aún no hay suficientes datos de órdenes.</div>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showClienteModal && (
+        <Modal title={editingCliente ? "Editar cliente" : "Nuevo cliente"} onClose={() => setShowClienteModal(false)}>
+          <FieldLabel>Nombre completo</FieldLabel>
+          <input style={inputStyle} value={clienteForm.nombre} onChange={(e) => setClienteForm({ ...clienteForm, nombre: e.target.value })} placeholder="Ej. Marco Jiménez" />
+          <FieldLabel>Teléfono</FieldLabel>
+          <input style={inputStyle} value={clienteForm.telefono} onChange={(e) => setClienteForm({ ...clienteForm, telefono: e.target.value })} placeholder="8888-1234" />
+          <FieldLabel>Correo (opcional)</FieldLabel>
+          <input style={inputStyle} value={clienteForm.correo} onChange={(e) => setClienteForm({ ...clienteForm, correo: e.target.value })} placeholder="correo@ejemplo.com" />
+          <button style={btnPrimary} onClick={saveCliente}>Guardar cliente</button>
+        </Modal>
+      )}
+
+      {showVehiculoModal && (
+        <Modal title={editingVehiculo ? "Editar vehículo" : "Nuevo vehículo"} onClose={() => setShowVehiculoModal(false)}>
+          <FieldLabel>Cliente</FieldLabel>
+          <select style={inputStyle} value={vehiculoForm.clienteId} onChange={(e) => setVehiculoForm({ ...vehiculoForm, clienteId: e.target.value })}>
+            <option value="">Seleccionar cliente</option>
+            {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+          <FieldLabel>Placa</FieldLabel>
+          <input style={inputStyle} value={vehiculoForm.placa} onChange={(e) => setVehiculoForm({ ...vehiculoForm, placa: e.target.value.toUpperCase() })} placeholder="CAB123" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div><FieldLabel>Marca</FieldLabel><input style={inputStyle} value={vehiculoForm.marca} onChange={(e) => setVehiculoForm({ ...vehiculoForm, marca: e.target.value })} placeholder="Toyota" /></div>
+            <div><FieldLabel>Modelo</FieldLabel><input style={inputStyle} value={vehiculoForm.modelo} onChange={(e) => setVehiculoForm({ ...vehiculoForm, modelo: e.target.value })} placeholder="Hilux" /></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div><FieldLabel>Año</FieldLabel><input style={inputStyle} value={vehiculoForm.anio} onChange={(e) => setVehiculoForm({ ...vehiculoForm, anio: e.target.value })} placeholder="2019" /></div>
+            <div><FieldLabel>Kilometraje</FieldLabel><input style={inputStyle} value={vehiculoForm.km} onChange={(e) => setVehiculoForm({ ...vehiculoForm, km: e.target.value })} placeholder="82,400" /></div>
+          </div>
+          <button style={btnPrimary} onClick={saveVehiculo}>Guardar vehículo</button>
+        </Modal>
+      )}
+
+      {showCitaModal && (
+        <Modal title={editingCita ? "Editar cita" : "Nueva cita"} onClose={() => setShowCitaModal(false)}>
+          <FieldLabel>Cliente</FieldLabel>
+          <select style={inputStyle} value={citaForm.clienteId} onChange={(e) => setCitaForm({ ...citaForm, clienteId: e.target.value, vehiculoId: "" })}>
+            <option value="">Seleccionar cliente</option>
+            {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+          <FieldLabel>Vehículo</FieldLabel>
+          <select style={inputStyle} value={citaForm.vehiculoId} onChange={(e) => setCitaForm({ ...citaForm, vehiculoId: e.target.value })}>
+            <option value="">Seleccionar vehículo</option>
+            {vehiculos.filter((v) => v.clienteId === citaForm.clienteId).map((v) => <option key={v.id} value={v.id}>{v.placa} · {v.marca} {v.modelo}</option>)}
+          </select>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div><FieldLabel>Fecha</FieldLabel><input type="date" style={inputStyle} value={citaForm.fecha} onChange={(e) => setCitaForm({ ...citaForm, fecha: e.target.value })} /></div>
+            <div><FieldLabel>Hora</FieldLabel><input type="time" style={inputStyle} value={citaForm.hora} onChange={(e) => setCitaForm({ ...citaForm, hora: e.target.value })} /></div>
+          </div>
+          <FieldLabel>Servicio</FieldLabel>
+          <input style={inputStyle} value={citaForm.servicio} onChange={(e) => setCitaForm({ ...citaForm, servicio: e.target.value })} placeholder="Ej. Cambio de aceite" />
+          <button style={btnPrimary} onClick={saveCita}>Guardar cita</button>
+        </Modal>
+      )}
+
+      {showProveedorModal && (
+        <Modal title={editingProveedor ? "Editar proveedor" : "Nuevo proveedor"} onClose={() => setShowProveedorModal(false)}>
+          <FieldLabel>Nombre de la empresa</FieldLabel>
+          <input style={inputStyle} value={proveedorForm.nombre} onChange={(e) => setProveedorForm({ ...proveedorForm, nombre: e.target.value })} placeholder="Ej. Repuestos del Valle" />
+          <FieldLabel>Persona de contacto</FieldLabel>
+          <input style={inputStyle} value={proveedorForm.contacto} onChange={(e) => setProveedorForm({ ...proveedorForm, contacto: e.target.value })} placeholder="Nombre del contacto" />
+          <FieldLabel>Teléfono</FieldLabel>
+          <input style={inputStyle} value={proveedorForm.telefono} onChange={(e) => setProveedorForm({ ...proveedorForm, telefono: e.target.value })} placeholder="8888-1234" />
+          <FieldLabel>Qué suministra</FieldLabel>
+          <input style={inputStyle} value={proveedorForm.suministra} onChange={(e) => setProveedorForm({ ...proveedorForm, suministra: e.target.value })} placeholder="Ej. Frenos, filtros, aceites" />
+          <button style={btnPrimary} onClick={saveProveedor}>Guardar proveedor</button>
+        </Modal>
+      )}
+
+      {showRepuestoModal && (
+        <Modal title={editingRepuesto ? "Editar repuesto" : "Nuevo repuesto"} onClose={() => setShowRepuestoModal(false)}>
+          <FieldLabel>Nombre del repuesto</FieldLabel>
+          <input style={inputStyle} value={repuestoForm.nombre} onChange={(e) => setRepuestoForm({ ...repuestoForm, nombre: e.target.value })} placeholder="Ej. Filtro de aceite" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div><FieldLabel>Stock</FieldLabel><input style={inputStyle} value={repuestoForm.stock} onChange={(e) => setRepuestoForm({ ...repuestoForm, stock: e.target.value })} placeholder="10" /></div>
+            <div><FieldLabel>Proveedor</FieldLabel>
+              <select style={inputStyle} value={repuestoForm.proveedorId} onChange={(e) => setRepuestoForm({ ...repuestoForm, proveedorId: e.target.value })}>
+                <option value="">Sin proveedor</option>
+                {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div><FieldLabel>Precio de compra</FieldLabel><input style={inputStyle} value={repuestoForm.precioCompra} onChange={(e) => setRepuestoForm({ ...repuestoForm, precioCompra: e.target.value })} placeholder="5000" /></div>
+            <div><FieldLabel>Precio de venta</FieldLabel><input style={inputStyle} value={repuestoForm.precioVenta} onChange={(e) => setRepuestoForm({ ...repuestoForm, precioVenta: e.target.value })} placeholder="8000" /></div>
+          </div>
+          <button style={btnPrimary} onClick={saveRepuesto}>Guardar repuesto</button>
+        </Modal>
+      )}
+
+      {showOrdenModal && (
+        <Modal title={editingOrden ? "Editar orden de trabajo" : "Nueva orden de trabajo"} onClose={() => setShowOrdenModal(false)} wide>
+          <FieldLabel>Vehículo</FieldLabel>
+          <select style={inputStyle} value={ordenForm.vehiculoId} onChange={(e) => setOrdenForm({ ...ordenForm, vehiculoId: e.target.value })}>
+            <option value="">Seleccionar vehículo</option>
+            {vehiculos.map((v) => <option key={v.id} value={v.id}>{v.placa} · {v.marca} {v.modelo}</option>)}
+          </select>
+          <FieldLabel>Fecha</FieldLabel>
+          <input type="date" style={inputStyle} value={ordenForm.fecha} onChange={(e) => setOrdenForm({ ...ordenForm, fecha: e.target.value })} />
+
+          <FieldLabel>Agregar servicio o repuesto</FieldLabel>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <select style={{ ...inputStyle, marginBottom: 0, flex: 1 }} value={itemTipo} onChange={(e) => { setItemTipo(e.target.value); setItemSeleccionId(""); }}>
+              <option value="servicio">Servicio</option>
+              <option value="repuesto">Repuesto</option>
+            </select>
+            <select style={{ ...inputStyle, marginBottom: 0, flex: 2 }} value={itemSeleccionId} onChange={(e) => setItemSeleccionId(e.target.value)}>
+              <option value="">Seleccionar...</option>
+              {(itemTipo === "servicio" ? servicios : repuestos).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+            </select>
+            <input style={{ ...inputStyle, marginBottom: 0, width: 60 }} value={itemCantidad} onChange={(e) => setItemCantidad(e.target.value)} placeholder="Cant." />
+            <button onClick={agregarItemOrden} style={{ ...btnPrimary, width: "auto", padding: "0 14px" }}>+</button>
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            {ordenForm.items.map((it, idx) => (
+              <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: `1px solid ${COLORS.border}` }}>
+                <span>{it.cantidad}× {it.nombre} <span style={{ color: COLORS.textSecondary, fontSize: 11 }}>({it.tipo})</span></span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>{money(it.precio * it.cantidad)}
+                  <X size={13} style={{ cursor: "pointer", color: COLORS.danger }} onClick={() => quitarItemOrden(idx)} />
+                </span>
+              </div>
+            ))}
+            {ordenForm.items.length === 0 && <div style={{ fontSize: 12.5, color: COLORS.textSecondary }}>Sin ítems agregados.</div>}
+          </div>
+
+          <FieldLabel>Mano de obra</FieldLabel>
+          <input style={inputStyle} value={ordenForm.manoObra} onChange={(e) => setOrdenForm({ ...ordenForm, manoObra: e.target.value })} placeholder="0" />
+
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
+            <span>Total</span><span>{money(costoOrdenActual)}</span>
+          </div>
+          <button style={btnPrimary} onClick={saveOrden}>Guardar orden</button>
+        </Modal>
+      )}
+
+      {showRevisionModal && (
+        <Modal title="Nueva revisión" onClose={() => setShowRevisionModal(false)}>
+          <FieldLabel>Orden de trabajo</FieldLabel>
+          <select style={inputStyle} value={revisionForm.ordenId} onChange={(e) => setRevisionForm({ ...revisionForm, ordenId: e.target.value })}>
+            <option value="">Seleccionar orden</option>
+            {ordenes.map((o) => {
+              const v = vehiculos.find((x) => x.id === o.vehiculoId);
+              return <option key={o.id} value={o.id}>{v?.placa} · {o.fecha}</option>;
+            })}
+          </select>
+          <FieldLabel>Tipo</FieldLabel>
+          <select style={inputStyle} value={revisionForm.tipo} onChange={(e) => setRevisionForm({ ...revisionForm, tipo: e.target.value })}>
+            <option value="entrada">Entrada</option>
+            <option value="salida">Salida</option>
+          </select>
+          <FieldLabel>Kilometraje</FieldLabel>
+          <input style={inputStyle} value={revisionForm.km} onChange={(e) => setRevisionForm({ ...revisionForm, km: e.target.value })} placeholder="82,400" />
+          <FieldLabel>Checklist</FieldLabel>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+            {CHECKLIST_ITEMS.map((item) => (
+              <label key={item} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, background: "#14181B", border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: "5px 9px", cursor: "pointer" }}>
+                <input type="checkbox" checked={!!revisionForm.checklist[item]} onChange={() => toggleChecklistItem(item)} /> {item}
+              </label>
+            ))}
+          </div>
+          <FieldLabel>Notas</FieldLabel>
+          <textarea style={{ ...inputStyle, minHeight: 60 }} value={revisionForm.notas} onChange={(e) => setRevisionForm({ ...revisionForm, notas: e.target.value })} placeholder="Observaciones adicionales..." />
+          <button style={btnPrimary} onClick={saveRevision}>Guardar revisión</button>
+        </Modal>
+      )}
+
+      {showFacturaModal && (
+        <Modal title="Generar factura" onClose={() => setShowFacturaModal(false)}>
+          <FieldLabel>Orden de trabajo</FieldLabel>
+          <select style={inputStyle} value={facturaForm.ordenId} onChange={(e) => seleccionarOrdenFactura(e.target.value)}>
+            <option value="">Seleccionar orden</option>
+            {ordenes.map((o) => {
+              const v = vehiculos.find((x) => x.id === o.vehiculoId);
+              return <option key={o.id} value={o.id}>{v?.placa} · {money(o.costoTotal)}</option>;
+            })}
+          </select>
+          <FieldLabel>Monto</FieldLabel>
+          <input style={inputStyle} value={facturaForm.monto} onChange={(e) => setFacturaForm({ ...facturaForm, monto: e.target.value })} placeholder="0" />
+          <button style={btnPrimary} onClick={saveFactura}>Guardar factura</button>
+        </Modal>
+      )}
+    </div>
+  );
+}
