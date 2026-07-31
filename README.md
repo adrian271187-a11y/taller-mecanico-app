@@ -11,6 +11,7 @@ Sistema completo conectado a Firebase (Firestore) con los siguientes módulos fu
 - **Proveedores** — contacto y qué suministran
 - **Facturación** — se genera desde una orden de trabajo, con botón de "enviar por correo" (ver sección de EmailJS abajo)
 - **Estadísticas** — ingresos totales, órdenes completadas, servicios más solicitados
+- **Login del panel** — protegido con Firebase Authentication (correo/contraseña)
 
 ## Cómo subirlo (mismo flujo que Kyomu Nails)
 
@@ -39,7 +40,11 @@ git push -u origin main
 4. Railway te dará una URL pública
 
 ### 4. Activar Authentication en Firebase (para el panel admin)
-En la consola de Firebase → Authentication → método de correo/contraseña → crear tu usuario administrador.
+El panel usa un usuario local (`TallerAdmin`) definido directamente en el código (`src/App.jsx`, constantes `LOCAL_USERNAME` y `LOCAL_PASSWORD`), no un correo real. Aun así, necesitas activar el método **Anónimo** en Firebase para que la app pueda conectarse a Firestore de forma segura:
+1. Firebase Console → **Authentication** → **Sign-in method** → activa **Anonymous**
+2. Eso es todo — no necesitas crear ningún usuario en la pestaña "Users"
+
+Para cambiar el usuario o la contraseña del panel más adelante, edita esas dos constantes en `src/App.jsx` y vuelve a publicar.
 
 ### 5. Reglas de seguridad de Firestore
 En Firebase → Firestore Database → Reglas:
@@ -70,6 +75,6 @@ await emailjs.send('TU_SERVICE_ID', 'TU_TEMPLATE_ID', {
 ```
 
 ## Pendiente para siguientes pasos (opcional)
-- Login del panel de administración con Firebase Authentication (como en Kyomu Nails)
 - Fotos en la revisión de entrada/salida (Firebase Storage)
 - Filtro de fechas y exportación de estadísticas
+- Múltiples usuarios administradores con distintos niveles de permiso
