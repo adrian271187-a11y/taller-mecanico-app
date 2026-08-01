@@ -234,6 +234,8 @@ export default function App() {
     if (editingCliente) await updateDoc(doc(db, "clientes", editingCliente), clienteForm);
     else await addDoc(collection(db, "clientes"), clienteForm);
     setShowClienteModal(false);
+    setEditingCliente(null);
+    setClienteForm({ nombre: "", telefono: "", correo: "" });
   }
   async function deleteCliente(id) {
     await deleteDoc(doc(db, "clientes", id));
@@ -252,6 +254,8 @@ export default function App() {
     if (editingVehiculo) await updateDoc(doc(db, "vehiculos", editingVehiculo), vehiculoForm);
     else await addDoc(collection(db, "vehiculos"), vehiculoForm);
     setShowVehiculoModal(false);
+    setEditingVehiculo(null);
+    setVehiculoForm({ clienteId: "", placa: "", marca: "", modelo: "", anio: "", km: "" });
   }
   async function deleteVehiculo(id) { await deleteDoc(doc(db, "vehiculos", id)); }
 
@@ -269,6 +273,8 @@ export default function App() {
     if (editingCita) await updateDoc(doc(db, "citas", editingCita), citaForm);
     else await addDoc(collection(db, "citas"), citaForm);
     setShowCitaModal(false);
+    setEditingCita(null);
+    setCitaForm({ clienteId: "", vehiculoId: "", fecha: "", hora: "", servicio: "", estado: "pendiente" });
   }
   async function deleteCita(id) { await deleteDoc(doc(db, "citas", id)); }
   async function toggleEstadoCita(c) {
@@ -288,6 +294,8 @@ export default function App() {
     if (editingProveedor) await updateDoc(doc(db, "proveedores", editingProveedor), proveedorForm);
     else await addDoc(collection(db, "proveedores"), proveedorForm);
     setShowProveedorModal(false);
+    setEditingProveedor(null);
+    setProveedorForm({ nombre: "", contacto: "", telefono: "", suministra: "" });
   }
   async function deleteProveedor(id) { await deleteDoc(doc(db, "proveedores", id)); }
 
@@ -304,6 +312,8 @@ export default function App() {
     if (editingRepuesto) await updateDoc(doc(db, "repuestos", editingRepuesto), payload);
     else await addDoc(collection(db, "repuestos"), payload);
     setShowRepuestoModal(false);
+    setEditingRepuesto(null);
+    setRepuestoForm({ nombre: "", stock: "", precioCompra: "", precioVenta: "", proveedorId: "" });
   }
   async function deleteRepuesto(id) { await deleteDoc(doc(db, "repuestos", id)); }
 
@@ -374,6 +384,8 @@ export default function App() {
       }
     }
     setShowOrdenModal(false);
+    setEditingOrden(null);
+    setOrdenForm({ vehiculoId: "", items: [], manoObra: "", estado: "abierta", fecha: "" });
   }
   async function deleteOrden(id) { await deleteDoc(doc(db, "ordenes", id)); }
   async function cambiarEstadoOrden(o, estado) { await updateDoc(doc(db, "ordenes", o.id), { estado }); }
@@ -394,6 +406,7 @@ export default function App() {
     if (!revisionForm.ordenId) return;
     await addDoc(collection(db, "revisiones"), revisionForm);
     setShowRevisionModal(false);
+    setRevisionForm({ ordenId: "", tipo: "entrada", km: "", notas: "", checklist: {} });
   }
   async function deleteRevision(id) { await deleteDoc(doc(db, "revisiones", id)); }
 
@@ -411,6 +424,7 @@ export default function App() {
     const o = ordenes.find((x) => x.id === facturaForm.ordenId);
     await addDoc(collection(db, "facturas"), { ...facturaForm, clienteId: o?.clienteId || "", fecha: new Date().toISOString().slice(0, 10) });
     setShowFacturaModal(false);
+    setFacturaForm({ ordenId: "", monto: "", estadoEnvio: "pendiente" });
   }
   async function deleteFactura(id) { await deleteDoc(doc(db, "facturas", id)); }
   async function marcarEnviada(f) {
@@ -652,8 +666,8 @@ export default function App() {
                 {servicios.length === 0 && <span style={{ fontSize: 12.5, color: COLORS.textSecondary }}>Aún no has agregado servicios.</span>}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <input placeholder="Nombre del servicio" value={nuevoServicioNombre} onChange={(e) => setNuevoServicioNombre(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 2 }} />
-                <input placeholder="Precio" value={nuevoServicioPrecio} onChange={(e) => setNuevoServicioPrecio(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
+                <input autoComplete="off" placeholder="Nombre del servicio" value={nuevoServicioNombre} onChange={(e) => setNuevoServicioNombre(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 2 }} />
+                <input autoComplete="off" placeholder="Precio" value={nuevoServicioPrecio} onChange={(e) => setNuevoServicioPrecio(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
                 <button onClick={agregarServicio} style={{ ...btnPrimary, width: "auto", padding: "0 14px" }}>Agregar</button>
               </div>
             </div>
@@ -853,11 +867,11 @@ export default function App() {
       {showClienteModal && (
         <Modal title={editingCliente ? "Editar cliente" : "Nuevo cliente"} onClose={() => setShowClienteModal(false)}>
           <FieldLabel>Nombre completo</FieldLabel>
-          <input style={inputStyle} value={clienteForm.nombre} onChange={(e) => setClienteForm({ ...clienteForm, nombre: e.target.value })} placeholder="Ej. Marco Jiménez" />
+          <input autoComplete="off" style={inputStyle} value={clienteForm.nombre} onChange={(e) => setClienteForm({ ...clienteForm, nombre: e.target.value })} placeholder="Ej. Marco Jiménez" />
           <FieldLabel>Teléfono</FieldLabel>
-          <input style={inputStyle} value={clienteForm.telefono} onChange={(e) => setClienteForm({ ...clienteForm, telefono: e.target.value })} placeholder="8888-1234" />
+          <input autoComplete="off" style={inputStyle} value={clienteForm.telefono} onChange={(e) => setClienteForm({ ...clienteForm, telefono: e.target.value })} placeholder="8888-1234" />
           <FieldLabel>Correo (opcional)</FieldLabel>
-          <input style={inputStyle} value={clienteForm.correo} onChange={(e) => setClienteForm({ ...clienteForm, correo: e.target.value })} placeholder="correo@ejemplo.com" />
+          <input autoComplete="off" style={inputStyle} value={clienteForm.correo} onChange={(e) => setClienteForm({ ...clienteForm, correo: e.target.value })} placeholder="correo@ejemplo.com" />
           <button style={btnPrimary} onClick={saveCliente}>Guardar cliente</button>
         </Modal>
       )}
@@ -870,14 +884,14 @@ export default function App() {
             {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
           <FieldLabel>Placa</FieldLabel>
-          <input style={inputStyle} value={vehiculoForm.placa} onChange={(e) => setVehiculoForm({ ...vehiculoForm, placa: e.target.value.toUpperCase() })} placeholder="CAB123" />
+          <input autoComplete="off" style={inputStyle} value={vehiculoForm.placa} onChange={(e) => setVehiculoForm({ ...vehiculoForm, placa: e.target.value.toUpperCase() })} placeholder="CAB123" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div><FieldLabel>Marca</FieldLabel><input style={inputStyle} value={vehiculoForm.marca} onChange={(e) => setVehiculoForm({ ...vehiculoForm, marca: e.target.value })} placeholder="Toyota" /></div>
-            <div><FieldLabel>Modelo</FieldLabel><input style={inputStyle} value={vehiculoForm.modelo} onChange={(e) => setVehiculoForm({ ...vehiculoForm, modelo: e.target.value })} placeholder="Hilux" /></div>
+            <div><FieldLabel>Marca</FieldLabel><input autoComplete="off" style={inputStyle} value={vehiculoForm.marca} onChange={(e) => setVehiculoForm({ ...vehiculoForm, marca: e.target.value })} placeholder="Toyota" /></div>
+            <div><FieldLabel>Modelo</FieldLabel><input autoComplete="off" style={inputStyle} value={vehiculoForm.modelo} onChange={(e) => setVehiculoForm({ ...vehiculoForm, modelo: e.target.value })} placeholder="Hilux" /></div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div><FieldLabel>Año</FieldLabel><input style={inputStyle} value={vehiculoForm.anio} onChange={(e) => setVehiculoForm({ ...vehiculoForm, anio: e.target.value })} placeholder="2019" /></div>
-            <div><FieldLabel>Kilometraje</FieldLabel><input style={inputStyle} value={vehiculoForm.km} onChange={(e) => setVehiculoForm({ ...vehiculoForm, km: e.target.value })} placeholder="82,400" /></div>
+            <div><FieldLabel>Año</FieldLabel><input autoComplete="off" style={inputStyle} value={vehiculoForm.anio} onChange={(e) => setVehiculoForm({ ...vehiculoForm, anio: e.target.value })} placeholder="2019" /></div>
+            <div><FieldLabel>Kilometraje</FieldLabel><input autoComplete="off" style={inputStyle} value={vehiculoForm.km} onChange={(e) => setVehiculoForm({ ...vehiculoForm, km: e.target.value })} placeholder="82,400" /></div>
           </div>
           <button style={btnPrimary} onClick={saveVehiculo}>Guardar vehículo</button>
         </Modal>
@@ -900,7 +914,7 @@ export default function App() {
             <div><FieldLabel>Hora</FieldLabel><input type="time" style={inputStyle} value={citaForm.hora} onChange={(e) => setCitaForm({ ...citaForm, hora: e.target.value })} /></div>
           </div>
           <FieldLabel>Servicio</FieldLabel>
-          <input style={inputStyle} value={citaForm.servicio} onChange={(e) => setCitaForm({ ...citaForm, servicio: e.target.value })} placeholder="Ej. Cambio de aceite" />
+          <input autoComplete="off" style={inputStyle} value={citaForm.servicio} onChange={(e) => setCitaForm({ ...citaForm, servicio: e.target.value })} placeholder="Ej. Cambio de aceite" />
           <button style={btnPrimary} onClick={saveCita}>Guardar cita</button>
         </Modal>
       )}
@@ -908,13 +922,13 @@ export default function App() {
       {showProveedorModal && (
         <Modal title={editingProveedor ? "Editar proveedor" : "Nuevo proveedor"} onClose={() => setShowProveedorModal(false)}>
           <FieldLabel>Nombre de la empresa</FieldLabel>
-          <input style={inputStyle} value={proveedorForm.nombre} onChange={(e) => setProveedorForm({ ...proveedorForm, nombre: e.target.value })} placeholder="Ej. Repuestos del Valle" />
+          <input autoComplete="off" style={inputStyle} value={proveedorForm.nombre} onChange={(e) => setProveedorForm({ ...proveedorForm, nombre: e.target.value })} placeholder="Ej. Repuestos del Valle" />
           <FieldLabel>Persona de contacto</FieldLabel>
-          <input style={inputStyle} value={proveedorForm.contacto} onChange={(e) => setProveedorForm({ ...proveedorForm, contacto: e.target.value })} placeholder="Nombre del contacto" />
+          <input autoComplete="off" style={inputStyle} value={proveedorForm.contacto} onChange={(e) => setProveedorForm({ ...proveedorForm, contacto: e.target.value })} placeholder="Nombre del contacto" />
           <FieldLabel>Teléfono</FieldLabel>
-          <input style={inputStyle} value={proveedorForm.telefono} onChange={(e) => setProveedorForm({ ...proveedorForm, telefono: e.target.value })} placeholder="8888-1234" />
+          <input autoComplete="off" style={inputStyle} value={proveedorForm.telefono} onChange={(e) => setProveedorForm({ ...proveedorForm, telefono: e.target.value })} placeholder="8888-1234" />
           <FieldLabel>Qué suministra</FieldLabel>
-          <input style={inputStyle} value={proveedorForm.suministra} onChange={(e) => setProveedorForm({ ...proveedorForm, suministra: e.target.value })} placeholder="Ej. Frenos, filtros, aceites" />
+          <input autoComplete="off" style={inputStyle} value={proveedorForm.suministra} onChange={(e) => setProveedorForm({ ...proveedorForm, suministra: e.target.value })} placeholder="Ej. Frenos, filtros, aceites" />
           <button style={btnPrimary} onClick={saveProveedor}>Guardar proveedor</button>
         </Modal>
       )}
@@ -922,9 +936,9 @@ export default function App() {
       {showRepuestoModal && (
         <Modal title={editingRepuesto ? "Editar repuesto" : "Nuevo repuesto"} onClose={() => setShowRepuestoModal(false)}>
           <FieldLabel>Nombre del repuesto</FieldLabel>
-          <input style={inputStyle} value={repuestoForm.nombre} onChange={(e) => setRepuestoForm({ ...repuestoForm, nombre: e.target.value })} placeholder="Ej. Filtro de aceite" />
+          <input autoComplete="off" style={inputStyle} value={repuestoForm.nombre} onChange={(e) => setRepuestoForm({ ...repuestoForm, nombre: e.target.value })} placeholder="Ej. Filtro de aceite" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div><FieldLabel>Stock</FieldLabel><input style={inputStyle} value={repuestoForm.stock} onChange={(e) => setRepuestoForm({ ...repuestoForm, stock: e.target.value })} placeholder="10" /></div>
+            <div><FieldLabel>Stock</FieldLabel><input autoComplete="off" style={inputStyle} value={repuestoForm.stock} onChange={(e) => setRepuestoForm({ ...repuestoForm, stock: e.target.value })} placeholder="10" /></div>
             <div><FieldLabel>Proveedor</FieldLabel>
               <select style={inputStyle} value={repuestoForm.proveedorId} onChange={(e) => setRepuestoForm({ ...repuestoForm, proveedorId: e.target.value })}>
                 <option value="">Sin proveedor</option>
@@ -933,8 +947,8 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div><FieldLabel>Precio de compra</FieldLabel><input style={inputStyle} value={repuestoForm.precioCompra} onChange={(e) => setRepuestoForm({ ...repuestoForm, precioCompra: e.target.value })} placeholder="5000" /></div>
-            <div><FieldLabel>Precio de venta</FieldLabel><input style={inputStyle} value={repuestoForm.precioVenta} onChange={(e) => setRepuestoForm({ ...repuestoForm, precioVenta: e.target.value })} placeholder="8000" /></div>
+            <div><FieldLabel>Precio de compra</FieldLabel><input autoComplete="off" style={inputStyle} value={repuestoForm.precioCompra} onChange={(e) => setRepuestoForm({ ...repuestoForm, precioCompra: e.target.value })} placeholder="5000" /></div>
+            <div><FieldLabel>Precio de venta</FieldLabel><input autoComplete="off" style={inputStyle} value={repuestoForm.precioVenta} onChange={(e) => setRepuestoForm({ ...repuestoForm, precioVenta: e.target.value })} placeholder="8000" /></div>
           </div>
           <button style={btnPrimary} onClick={saveRepuesto}>Guardar repuesto</button>
         </Modal>
@@ -960,7 +974,7 @@ export default function App() {
               <option value="">Seleccionar...</option>
               {(itemTipo === "servicio" ? servicios : repuestos).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
             </select>
-            <input style={{ ...inputStyle, marginBottom: 0, width: 60 }} value={itemCantidad} onChange={(e) => setItemCantidad(e.target.value)} placeholder="Cant." />
+            <input autoComplete="off" style={{ ...inputStyle, marginBottom: 0, width: 60 }} value={itemCantidad} onChange={(e) => setItemCantidad(e.target.value)} placeholder="Cant." />
             <button onClick={agregarItemOrden} style={{ ...btnPrimary, width: "auto", padding: "0 14px" }}>+</button>
           </div>
 
@@ -977,7 +991,7 @@ export default function App() {
           </div>
 
           <FieldLabel>Mano de obra</FieldLabel>
-          <input style={inputStyle} value={ordenForm.manoObra} onChange={(e) => setOrdenForm({ ...ordenForm, manoObra: e.target.value })} placeholder="0" />
+          <input autoComplete="off" style={inputStyle} value={ordenForm.manoObra} onChange={(e) => setOrdenForm({ ...ordenForm, manoObra: e.target.value })} placeholder="0" />
 
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
             <span>Total</span><span>{money(costoOrdenActual)}</span>
@@ -1002,7 +1016,7 @@ export default function App() {
             <option value="salida">Salida</option>
           </select>
           <FieldLabel>Kilometraje</FieldLabel>
-          <input style={inputStyle} value={revisionForm.km} onChange={(e) => setRevisionForm({ ...revisionForm, km: e.target.value })} placeholder="82,400" />
+          <input autoComplete="off" style={inputStyle} value={revisionForm.km} onChange={(e) => setRevisionForm({ ...revisionForm, km: e.target.value })} placeholder="82,400" />
           <FieldLabel>Checklist</FieldLabel>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
             {CHECKLIST_ITEMS.map((item) => (
@@ -1012,7 +1026,7 @@ export default function App() {
             ))}
           </div>
           <FieldLabel>Notas</FieldLabel>
-          <textarea style={{ ...inputStyle, minHeight: 60 }} value={revisionForm.notas} onChange={(e) => setRevisionForm({ ...revisionForm, notas: e.target.value })} placeholder="Observaciones adicionales..." />
+          <textarea autoComplete="off" style={{ ...inputStyle, minHeight: 60 }} value={revisionForm.notas} onChange={(e) => setRevisionForm({ ...revisionForm, notas: e.target.value })} placeholder="Observaciones adicionales..." />
           <button style={btnPrimary} onClick={saveRevision}>Guardar revisión</button>
         </Modal>
       )}
@@ -1028,7 +1042,7 @@ export default function App() {
             })}
           </select>
           <FieldLabel>Monto</FieldLabel>
-          <input style={inputStyle} value={facturaForm.monto} onChange={(e) => setFacturaForm({ ...facturaForm, monto: e.target.value })} placeholder="0" />
+          <input autoComplete="off" style={inputStyle} value={facturaForm.monto} onChange={(e) => setFacturaForm({ ...facturaForm, monto: e.target.value })} placeholder="0" />
           <button style={btnPrimary} onClick={saveFactura}>Guardar factura</button>
         </Modal>
       )}
