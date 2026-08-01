@@ -687,11 +687,19 @@ export default function App() {
     const docPdf = new jsPDF({ unit: "mm", format: "a4" });
     registrarFuentePDF(docPdf);
 
-    // ---- Fondo decorativo: franja diagonal arriba a la izquierda + engranajes ----
+    // ---- Fondo decorativo, inspirado en la plantilla de referencia ----
+    // Franja diagonal arriba a la izquierda
     dibujarFranjasDiagonales(docPdf, 14, 10, 62, 14, OSCURO_RGB);
+    // Racimo de engranajes arriba a la derecha (uno recortado por el borde de la página)
     dibujarEngranaje(docPdf, 150, 20, 9, 9, 0.55, [200, 200, 200]);
     dibujarEngranaje(docPdf, 197, 11, 6, 8, 0.55, [150, 150, 150]);
-    dibujarEngranaje(docPdf, 160, 165, 40, 12, 0.045, [150, 150, 150]); // marca de agua central
+    dibujarEngranaje(docPdf, 208, 26, 13, 10, 0.35, [190, 190, 190]);
+    // Franja de rayas diagonales, en vertical, sobre el borde derecho
+    dibujarFranjasDiagonales(docPdf, 199, 110, 8, 90, OSCURO_RGB);
+    // Círculo grande recortado por la esquina inferior izquierda (como un engranaje "cortado")
+    dibujarEngranaje(docPdf, -6, 300, 30, 14, 0.5, [210, 210, 210]);
+    // Marca de agua central
+    dibujarEngranaje(docPdf, 160, 165, 40, 12, 0.045, [150, 150, 150]);
 
     // ---- Título ----
     docPdf.setTextColor(...ROJO_RGB);
