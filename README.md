@@ -9,7 +9,7 @@ Sistema completo conectado a Firebase (Firestore) con los siguientes módulos fu
 - **Revisión de entrada/salida** — checklist, kilometraje y notas por orden
 - **Inventario** — repuestos con alerta de bajo stock (menos de 5 unidades)
 - **Proveedores** — contacto y qué suministran
-- **Facturación** — se genera desde una orden de trabajo, con botón de "enviar por correo" (ver sección de EmailJS abajo)
+- **Facturación** — se genera desde una orden de trabajo, con **número consecutivo automático** (FA-0001, FA-0002...), botón para **ver/imprimir la factura en PDF** y botón de "enviar por correo" (ver sección de PDF y correo abajo)
 - **Estadísticas** — ingresos totales, órdenes completadas, servicios más solicitados
 - **Login del panel** — protegido con Firebase Authentication (correo/contraseña)
 
@@ -59,20 +59,14 @@ service cloud.firestore {
 }
 ```
 
-### 6. Envío de facturas por correo (EmailJS)
-El botón "Enviar por correo" de Facturación está listo para conectarse, pero necesita tu propia cuenta de EmailJS (emailjs.com):
-1. Crea una cuenta y un servicio de correo (Gmail, etc.)
-2. Crea una plantilla de correo para la factura
-3. En `src/App.jsx`, dentro de la función `marcarEnviada`, agrega:
-```js
-import emailjs from '@emailjs/browser';
-// ...
-await emailjs.send('TU_SERVICE_ID', 'TU_TEMPLATE_ID', {
-  cliente_nombre: cliente?.nombre,
-  cliente_correo: cliente?.correo,
-  monto: f.monto,
-}, 'TU_PUBLIC_KEY');
-```
+### 6. Factura en PDF y envío por correo
+Cada factura se genera con un número consecutivo automático (FA-0001, FA-0002...) y un botón de "Ver / imprimir factura" que abre el PDF en una pestaña nueva (desde ahí se puede imprimir o guardar con el botón de descarga del navegador).
+
+Los datos del taller que aparecen en el encabezado del PDF (nombre, cédula jurídica, dirección, teléfono, correo) están en la constante `DATOS_TALLER` dentro de `src/App.jsx` — edítalos con los datos reales de tu negocio.
+
+**Importante:** este PDF es un comprobante interno del taller (recibo/factura de servicio), no una factura electrónica autorizada por el Ministerio de Hacienda. Si necesitas facturación electrónica oficial en Costa Rica, se requiere integrarse con un proveedor autorizado (ATV/Hacienda), lo cual es un desarrollo aparte.
+
+El botón "Enviar por correo" descarga el PDF automáticamente y abre un borrador de correo (con el cliente y asunto ya llenos) para que solo adjuntes el PDF descargado y le des enviar. Esto es así porque enviar el correo de forma 100% automática con el PDF ya adjunto requiere conectar EmailJS (plan de pago, ya que el plan gratuito no permite adjuntos) o un backend propio con un servicio de correo (SendGrid, etc.) — avísame si quieres que conectemos alguna de estas dos opciones más adelante.
 
 ## Pendiente para siguientes pasos (opcional)
 - Fotos en la revisión de entrada/salida (Firebase Storage)

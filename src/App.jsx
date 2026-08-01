@@ -6,10 +6,13 @@ import {
 import {
   signInAnonymously, onAuthStateChanged, signOut,
 } from "firebase/auth";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
   Wrench, Users, Car, Calendar, Package, Truck, Receipt,
   BarChart3, ClipboardCheck, Plus, X, Search, Phone, Mail,
   ChevronRight, Trash2, Edit2, Send, AlertTriangle, LogOut, Lock,
+  FileText, Printer,
 } from "lucide-react";
 
 // Usuario local del panel de administración (no requiere correo real)
@@ -460,17 +463,139 @@ export default function App() {
   const [showFacturaModal, setShowFacturaModal] = useState(false);
   const [facturaForm, setFacturaForm] = useState({ ordenId: "", monto: "", estadoEnvio: "pendiente" });
 
+  // Datos del taller que aparecen en el encabezado de la factura (edítalos con los datos reales del negocio)
+  const DATOS_TALLER = {
+    nombre: "Taller Mecánico",
+    cedulaJuridica: "3-101-000000",
+    direccion: "San José, Costa Rica",
+    telefono: "8888-1234",
+    correo: "contacto@tallermecanico.com",
+  };
+
+  function siguienteNumeroFactura() {
+    const maxNumero = facturas.reduce((max, f) => Math.max(max, Number(f.numero) || 0), 0);
+    return maxNumero + 1;
+  }
+  function formatoNumeroFactura(n) {
+    return `FA-${String(n || 0).padStart(4, "0")}`;
+  }
+
   function openNewFactura() { setSaveError(""); setFacturaForm({ ordenId: "", monto: "", estadoEnvio: "pendiente" }); setShowFacturaModal(true); }
   function seleccionarOrdenFactura(ordenId) {
     const o = ordenes.find((x) => x.id === ordenId);
     setFacturaForm({ ordenId, monto: o ? o.costoTotal : "", estadoEnvio: "pendiente" });
   }
+
+  // Genera el PDF de la factura (comprobante interno del taller — no es una factura electrónica de Hacienda).
+  // Toma como referencia el formato típico de un taller automotriz: encabezado del negocio, datos del
+  // cliente y vehículo, detalle de servicios/repuestos, y el desglose de subtotal + IVA + total.
+  function generarFacturaPDF(f) {
+    const o = ordenes.find((x) => x.id === f.ordenId);
+    const vehiculo = o ? vehiculos.find((v) => v.id === o.vehiculoId) : null;
+    const cliente = clientes.find((c) => c.id === f.clienteId);
+    const numeroTexto = formatoNumeroFactura(f.numero);
+
+    const docPdf = new jsPDF({ unit: "mm", format: "a4" });
+
+    docPdf.setFontSize(16);
+    docPdf.setFont(undefined, "bold");
+    docPdf.text(DATOS_TALLER.nombre, 14, 18);
+    docPdf.setFontSize(9);
+    docPdf.setFont(undefined, "normal");
+    docPdf.text(`Cédula jurídica: ${DATOS_TALLER.cedulaJuridica}`, 14, 24);
+    docPdf.text(DATOS_TALLER.direccion, 14, 29);
+    docPdf.text(`Tel: ${DATOS_TALLER.telefono}  ·  ${DATOS_TALLER.correo}`, 14, 34);
+
+    docPdf.setFontSize(14);
+    docPdf.setFont(undefined, "bold");
+    docPdf.text("FACTURA", 196, 18, { align: "right" });
+    docPdf.setFontSize(10);
+    docPdf.setFont(undefined, "normal");
+    docPdf.text(`No. ${numeroTexto}`, 196, 24, { align: "right" });
+    docPdf.text(`Fecha: ${f.fecha || ""}`, 196, 29, { align: "right" });
+
+    docPdf.setDrawColor(200);
+    docPdf.line(14, 38, 196, 38);
+
+    docPdf.setFontSize(10);
+    docPdf.setFont(undefined, "bold");
+    docPdf.text("Cliente", 14, 46);
+    docPdf.setFont(undefined, "normal");
+    docPdf.text(`${cliente?.nombre || "—"}`, 14, 52);
+    docPdf.text(`Tel: ${cliente?.telefono || "—"}`, 14, 57);
+    if (cliente?.correo) docPdf.text(`Correo: ${cliente.correo}`, 14, 62);
+
+    docPdf.setFont(undefined, "bold");
+    docPdf.text("Vehículo", 120, 46);
+    docPdf.setFont(undefined, "normal");
+    docPdf.text(`Placa: ${vehiculo?.placa || "—"}`, 120, 52);
+    docPdf.text(`${vehiculo?.marca || ""} ${vehiculo?.modelo || ""} ${vehiculo?.anio || ""}`.trim() || "—", 120, 57);
+    docPdf.text(`Kilometraje: ${vehiculo?.km || "—"}`, 120, 62);
+
+    const items = o?.items || [];
+    const rows = items.map((it) => [
+      String(it.cantidad),
+      `${it.nombre} (${it.tipo === "servicio" ? "Servicio" : "Repuesto"})`,
+      money(it.precio),
+      money(it.precio * it.cantidad),
+    ]);
+    if (Number(o?.manoObra) > 0) {
+      rows.push(["1", "Mano de obra", money(o.manoObra), money(o.manoObra)]);
+    }
+    if (rows.length === 0) rows.push(["—", "Servicio realizado", money(f.monto), money(f.monto)]);
+
+    autoTable(docPdf, {
+      startY: 70,
+      head: [["Cant.", "Descripción", "Precio unitario", "Total"]],
+      body: rows,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [255, 106, 46] },
+      margin: { left: 14, right: 14 },
+    });
+
+    const finalY = docPdf.lastAutoTable.finalY + 10;
+    const total = Number(f.monto) || 0;
+    const subtotal = total / 1.13;
+    const iva = total - subtotal;
+
+    docPdf.setFontSize(10);
+    docPdf.setFont(undefined, "normal");
+    docPdf.text("Subtotal:", 150, finalY);
+    docPdf.text(money(subtotal), 196, finalY, { align: "right" });
+    docPdf.text("IVA (13%):", 150, finalY + 6);
+    docPdf.text(money(iva), 196, finalY + 6, { align: "right" });
+    docPdf.setFont(undefined, "bold");
+    docPdf.setFontSize(12);
+    docPdf.text("Total:", 150, finalY + 15);
+    docPdf.text(money(total), 196, finalY + 15, { align: "right" });
+
+    docPdf.setFont(undefined, "normal");
+    docPdf.setFontSize(9);
+    docPdf.setTextColor(120);
+    docPdf.text("Gracias por su preferencia.", 14, finalY + 26);
+
+    return docPdf;
+  }
+
+  // Abre el PDF en una pestaña nueva, lista para imprimir o guardar
+  function verFacturaPDF(f) {
+    const docPdf = generarFacturaPDF(f);
+    docPdf.output("dataurlnewwindow");
+  }
+  // Descarga el PDF al equipo (útil para adjuntarlo manualmente en el correo)
+  function descargarFacturaPDF(f) {
+    const docPdf = generarFacturaPDF(f);
+    docPdf.save(`Factura-${formatoNumeroFactura(f.numero)}.pdf`);
+  }
+
   async function saveFactura() {
     if (!facturaForm.ordenId) return;
     setSaveError("");
     try {
       const o = ordenes.find((x) => x.id === facturaForm.ordenId);
-      await addDoc(collection(db, "facturas"), { ...facturaForm, clienteId: o?.clienteId || "", fecha: new Date().toISOString().slice(0, 10) });
+      const numero = siguienteNumeroFactura();
+      const nuevaFactura = { ...facturaForm, clienteId: o?.clienteId || "", fecha: new Date().toISOString().slice(0, 10), numero };
+      await addDoc(collection(db, "facturas"), nuevaFactura);
       setShowFacturaModal(false);
       setFacturaForm({ ordenId: "", monto: "", estadoEnvio: "pendiente" });
     } catch (err) {
@@ -479,9 +604,18 @@ export default function App() {
     }
   }
   async function deleteFactura(id) { await deleteDoc(doc(db, "facturas", id)); }
+
+  // Envío por correo: descarga el PDF y abre un borrador de correo ya dirigido al cliente para adjuntarlo.
+  // (Enviarlo automático con el PDF adjunto, sin intervención manual, requiere EmailJS de pago o un backend propio.)
   async function marcarEnviada(f) {
-    // Integración de envío por correo: conectar aquí EmailJS (@emailjs/browser) con tu service/template ID.
-    // emailjs.send('TU_SERVICE_ID', 'TU_TEMPLATE_ID', { ...datos }, 'TU_PUBLIC_KEY')
+    const cliente = clientes.find((c) => c.id === f.clienteId);
+    const numeroTexto = formatoNumeroFactura(f.numero);
+    descargarFacturaPDF(f);
+    const asunto = encodeURIComponent(`Factura ${numeroTexto} - ${DATOS_TALLER.nombre}`);
+    const cuerpo = encodeURIComponent(
+      `Hola ${cliente?.nombre || ""},\n\nAdjunto la factura ${numeroTexto} por los servicios realizados en su vehículo (se acaba de descargar a su computadora, solo debe adjuntarla a este correo).\n\nGracias por su preferencia.\n\n${DATOS_TALLER.nombre}`
+    );
+    window.open(`mailto:${cliente?.correo || ""}?subject=${asunto}&body=${cuerpo}`, "_blank");
     await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
   }
 
@@ -862,7 +996,7 @@ export default function App() {
                 return (
                   <div key={f.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                      <TicketBadge n={i + 1} />
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: COLORS.textSecondary, letterSpacing: "0.05em" }}>{formatoNumeroFactura(f.numero)}</div>
                       <div>
                         <div style={{ fontSize: 14.5, fontWeight: 500 }}>{cliente?.nombre || "Cliente"}</div>
                         <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginTop: 3 }}>{f.fecha}</div>
@@ -871,6 +1005,7 @@ export default function App() {
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, fontWeight: 600 }}>{money(f.monto)}</div>
                       <span style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, color: f.estadoEnvio === "enviada" ? COLORS.success : COLORS.textSecondary, border: `1px solid ${f.estadoEnvio === "enviada" ? COLORS.success : COLORS.border}` }}>{f.estadoEnvio}</span>
+                      <button onClick={() => verFacturaPDF(f)} title="Ver / imprimir factura (PDF)" style={btnGhost}><FileText size={14} /></button>
                       {f.estadoEnvio !== "enviada" && (
                         <button onClick={() => marcarEnviada(f)} title="Enviar por correo" style={btnGhost}><Send size={14} /></button>
                       )}
@@ -1102,6 +1237,7 @@ export default function App() {
           </select>
           <FieldLabel>Monto</FieldLabel>
           <input autoComplete="off" style={inputStyle} value={facturaForm.monto} onChange={(e) => setFacturaForm({ ...facturaForm, monto: e.target.value })} placeholder="0" />
+          <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 14 }}>Se generará como <strong>{formatoNumeroFactura(siguienteNumeroFactura())}</strong>. Después de guardar, podrás ver e imprimir el PDF desde la lista.</div>
           {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{saveError}</div>}
           <button style={btnPrimary} onClick={saveFactura}>Guardar factura</button>
         </Modal>
