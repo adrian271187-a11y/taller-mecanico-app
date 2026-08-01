@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { db, auth } from "./firebase";
+import { db, auth, functions } from "./firebase";
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc,
 } from "firebase/firestore";
@@ -8,6 +8,9 @@ import {
 } from "firebase/auth";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import emailjs from "@emailjs/browser";
+import { httpsCallable } from "firebase/functions";
+import { DEJAVU_SANS_REGULAR_BASE64, DEJAVU_SANS_BOLD_BASE64 } from "./fonts_dejavu";
 import {
   Wrench, Users, Car, Calendar, Package, Truck, Receipt,
   BarChart3, ClipboardCheck, Plus, X, Search, Phone, Mail,
@@ -151,6 +154,54 @@ function PageHeader({ title, subtitle, action }) {
 function money(n) {
   const v = Number(n) || 0;
   return "₡" + v.toLocaleString("es-CR", { maximumFractionDigits: 0 });
+}
+
+const PDF_FONT = "DejaVuSans";
+
+// Registra en el documento jsPDF la fuente que sí incluye el símbolo ₡ y los acentos en español
+// (las fuentes estándar de PDF como Helvetica no tienen esos glifos y los muestran como "¡").
+function registrarFuentePDF(docPdf) {
+  docPdf.addFileToVFS("DejaVuSans.ttf", DEJAVU_SANS_REGULAR_BASE64);
+  docPdf.addFont("DejaVuSans.ttf", PDF_FONT, "normal");
+  docPdf.addFileToVFS("DejaVuSans-Bold.ttf", DEJAVU_SANS_BOLD_BASE64);
+  docPdf.addFont("DejaVuSans-Bold.ttf", PDF_FONT, "bold");
+  docPdf.setFont(PDF_FONT, "normal");
+}
+
+// Dibuja un engranaje como marca de agua sutil (temática de taller mecánico) detrás del contenido
+function dibujarEngranajeMarcaDeAgua(docPdf, cx, cy, radio, dientes, opacidad) {
+  docPdf.saveGraphicsState();
+  docPdf.setGState(new docPdf.GState({ opacity: opacidad }));
+  docPdf.setDrawColor(150, 150, 150);
+  docPdf.setFillColor(150, 150, 150);
+  docPdf.setLineWidth(1.2);
+
+  docPdf.circle(cx, cy, radio, "S");
+  docPdf.circle(cx, cy, radio * 0.55, "S");
+
+  const anchoDiente = radio * 0.22;
+  const altoDiente = radio * 0.24;
+  for (let i = 0; i < dientes; i++) {
+    const angulo = (i / dientes) * Math.PI * 2;
+    const dist = radio + altoDiente / 2;
+    const px = cx + Math.cos(angulo) * dist;
+    const py = cy + Math.sin(angulo) * dist;
+    const cosA = Math.cos(angulo), sinA = Math.sin(angulo);
+    const hw = anchoDiente / 2, hh = altoDiente / 2;
+    const corners = [
+      [-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh],
+    ].map(([dx, dy]) => [px + dx * cosA - dy * sinA, py + dx * sinA + dy * cosA]);
+    docPdf.lines(
+      [
+        [corners[1][0] - corners[0][0], corners[1][1] - corners[0][1]],
+        [corners[2][0] - corners[1][0], corners[2][1] - corners[1][1]],
+        [corners[3][0] - corners[2][0], corners[3][1] - corners[2][1]],
+        [corners[0][0] - corners[3][0], corners[0][1] - corners[3][1]],
+      ],
+      corners[0][0], corners[0][1], [1, 1], "F", true
+    );
+  }
+  docPdf.restoreGraphicsState();
 }
 
 export default function App() {
@@ -472,12 +523,25 @@ export default function App() {
     correo: "contacto@tallermecanico.com",
   };
 
+  // Configuración de EmailJS para el envío automático de la factura por correo.
+  // Crea una cuenta gratuita en emailjs.com, un "Service" (tu Gmail, por ejemplo) y una
+  // plantilla ("Template") con estas variables: {{to_email}} {{to_name}} {{numero_factura}}
+  // {{monto}} {{fecha}} {{taller_nombre}} — y pega aquí los 3 valores que te da EmailJS.
+  // Mientras estos 3 campos digan "TU_..." el sistema usa automáticamente el respaldo manual
+  // (descarga el PDF y abre un borrador de correo) en vez de fallar en silencio.
+  const EMAILJS_SERVICE_ID = "service_b9wd9s9";
+  const EMAILJS_TEMPLATE_ID = "template_9olimrp";
+  const EMAILJS_PUBLIC_KEY = "1FTwMiRXWwu15F_2e";
+  const emailjsConfigurado =
+    !EMAILJS_SERVICE_ID.startsWith("TU_") && !EMAILJS_TEMPLATE_ID.startsWith("TU_") && !EMAILJS_PUBLIC_KEY.startsWith("TU_");
+
+  function formatoNumeroFactura(n) {
+    return `FA-${String(n || 0).padStart(4, "0")}`;
+  }
+
   function siguienteNumeroFactura() {
     const maxNumero = facturas.reduce((max, f) => Math.max(max, Number(f.numero) || 0), 0);
     return maxNumero + 1;
-  }
-  function formatoNumeroFactura(n) {
-    return `FA-${String(n || 0).padStart(4, "0")}`;
   }
 
   function openNewFactura() { setSaveError(""); setFacturaForm({ ordenId: "", monto: "", estadoEnvio: "pendiente" }); setShowFacturaModal(true); }
@@ -489,6 +553,8 @@ export default function App() {
   // Genera el PDF de la factura (comprobante interno del taller — no es una factura electrónica de Hacienda).
   // Toma como referencia el formato típico de un taller automotriz: encabezado del negocio, datos del
   // cliente y vehículo, detalle de servicios/repuestos, y el desglose de subtotal + IVA + total.
+  const ACCENT_RGB = [255, 106, 46];
+
   function generarFacturaPDF(f) {
     const o = ordenes.find((x) => x.id === f.ordenId);
     const vehiculo = o ? vehiculos.find((v) => v.id === o.vehiculoId) : null;
@@ -496,42 +562,60 @@ export default function App() {
     const numeroTexto = formatoNumeroFactura(f.numero);
 
     const docPdf = new jsPDF({ unit: "mm", format: "a4" });
+    registrarFuentePDF(docPdf);
 
-    docPdf.setFontSize(16);
-    docPdf.setFont(undefined, "bold");
-    docPdf.text(DATOS_TALLER.nombre, 14, 18);
+    // Marca de agua de engranaje (temática de taller), detrás de todo el contenido
+    dibujarEngranajeMarcaDeAgua(docPdf, 178, 165, 42, 12, 0.045);
+    dibujarEngranajeMarcaDeAgua(docPdf, 25, 260, 26, 10, 0.04);
+
+    // ---- Encabezado ----
+    docPdf.setFillColor(...ACCENT_RGB);
+    docPdf.rect(0, 0, 210, 34, "F");
+
+    docPdf.setTextColor(255, 255, 255);
+    docPdf.setFont(PDF_FONT, "bold");
+    docPdf.setFontSize(17);
+    docPdf.text(DATOS_TALLER.nombre, 14, 15);
+    docPdf.setFont(PDF_FONT, "normal");
+    docPdf.setFontSize(8.5);
+    docPdf.text("Servicio y reparación automotriz", 14, 21);
+    docPdf.text(`Cédula jurídica: ${DATOS_TALLER.cedulaJuridica}  ·  ${DATOS_TALLER.direccion}`, 14, 26.5);
+    docPdf.text(`Tel: ${DATOS_TALLER.telefono}  ·  ${DATOS_TALLER.correo}`, 14, 31);
+
+    docPdf.setFont(PDF_FONT, "bold");
+    docPdf.setFontSize(15);
+    docPdf.text("FACTURA", 196, 15, { align: "right" });
+    docPdf.setFont(PDF_FONT, "normal");
+    docPdf.setFontSize(9.5);
+    docPdf.text(`No. ${numeroTexto}`, 196, 22, { align: "right" });
+    docPdf.text(`Fecha: ${f.fecha || ""}`, 196, 27.5, { align: "right" });
+
+    // ---- Datos de cliente y vehículo (tarjetas) ----
+    docPdf.setTextColor(30, 30, 30);
+    const cardY = 42;
+    docPdf.setDrawColor(225, 225, 225);
+    docPdf.setFillColor(248, 248, 248);
+    docPdf.roundedRect(14, cardY, 88, 30, 2, 2, "FD");
+    docPdf.roundedRect(108, cardY, 88, 30, 2, 2, "FD");
+
+    docPdf.setFont(PDF_FONT, "bold");
     docPdf.setFontSize(9);
-    docPdf.setFont(undefined, "normal");
-    docPdf.text(`Cédula jurídica: ${DATOS_TALLER.cedulaJuridica}`, 14, 24);
-    docPdf.text(DATOS_TALLER.direccion, 14, 29);
-    docPdf.text(`Tel: ${DATOS_TALLER.telefono}  ·  ${DATOS_TALLER.correo}`, 14, 34);
+    docPdf.setTextColor(...ACCENT_RGB);
+    docPdf.text("CLIENTE", 18, cardY + 7);
+    docPdf.text("VEHÍCULO", 112, cardY + 7);
 
-    docPdf.setFontSize(14);
-    docPdf.setFont(undefined, "bold");
-    docPdf.text("FACTURA", 196, 18, { align: "right" });
-    docPdf.setFontSize(10);
-    docPdf.setFont(undefined, "normal");
-    docPdf.text(`No. ${numeroTexto}`, 196, 24, { align: "right" });
-    docPdf.text(`Fecha: ${f.fecha || ""}`, 196, 29, { align: "right" });
+    docPdf.setFont(PDF_FONT, "normal");
+    docPdf.setFontSize(9.5);
+    docPdf.setTextColor(40, 40, 40);
+    docPdf.text(`${cliente?.nombre || "—"}`, 18, cardY + 14);
+    docPdf.text(`Tel: ${cliente?.telefono || "—"}`, 18, cardY + 20);
+    docPdf.text(`Correo: ${cliente?.correo || "—"}`, 18, cardY + 26);
 
-    docPdf.setDrawColor(200);
-    docPdf.line(14, 38, 196, 38);
+    docPdf.text(`Placa: ${vehiculo?.placa || "—"}`, 112, cardY + 14);
+    docPdf.text(`${vehiculo?.marca || ""} ${vehiculo?.modelo || ""} ${vehiculo?.anio || ""}`.trim() || "—", 112, cardY + 20);
+    docPdf.text(`Kilometraje: ${vehiculo?.km || "—"}`, 112, cardY + 26);
 
-    docPdf.setFontSize(10);
-    docPdf.setFont(undefined, "bold");
-    docPdf.text("Cliente", 14, 46);
-    docPdf.setFont(undefined, "normal");
-    docPdf.text(`${cliente?.nombre || "—"}`, 14, 52);
-    docPdf.text(`Tel: ${cliente?.telefono || "—"}`, 14, 57);
-    if (cliente?.correo) docPdf.text(`Correo: ${cliente.correo}`, 14, 62);
-
-    docPdf.setFont(undefined, "bold");
-    docPdf.text("Vehículo", 120, 46);
-    docPdf.setFont(undefined, "normal");
-    docPdf.text(`Placa: ${vehiculo?.placa || "—"}`, 120, 52);
-    docPdf.text(`${vehiculo?.marca || ""} ${vehiculo?.modelo || ""} ${vehiculo?.anio || ""}`.trim() || "—", 120, 57);
-    docPdf.text(`Kilometraje: ${vehiculo?.km || "—"}`, 120, 62);
-
+    // ---- Detalle de servicios y repuestos ----
     const items = o?.items || [];
     const rows = items.map((it) => [
       String(it.cantidad),
@@ -545,34 +629,56 @@ export default function App() {
     if (rows.length === 0) rows.push(["—", "Servicio realizado", money(f.monto), money(f.monto)]);
 
     autoTable(docPdf, {
-      startY: 70,
+      startY: cardY + 38,
       head: [["Cant.", "Descripción", "Precio unitario", "Total"]],
       body: rows,
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [255, 106, 46] },
+      styles: { font: PDF_FONT, fontSize: 9, textColor: [40, 40, 40] },
+      headStyles: { font: PDF_FONT, fontStyle: "bold", fillColor: ACCENT_RGB, textColor: 255 },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+      columnStyles: { 0: { cellWidth: 16 }, 2: { halign: "right" }, 3: { halign: "right" } },
       margin: { left: 14, right: 14 },
     });
 
+    // ---- Totales ----
     const finalY = docPdf.lastAutoTable.finalY + 10;
     const total = Number(f.monto) || 0;
     const subtotal = total / 1.13;
     const iva = total - subtotal;
 
-    docPdf.setFontSize(10);
-    docPdf.setFont(undefined, "normal");
-    docPdf.text("Subtotal:", 150, finalY);
-    docPdf.text(money(subtotal), 196, finalY, { align: "right" });
-    docPdf.text("IVA (13%):", 150, finalY + 6);
-    docPdf.text(money(iva), 196, finalY + 6, { align: "right" });
-    docPdf.setFont(undefined, "bold");
-    docPdf.setFontSize(12);
-    docPdf.text("Total:", 150, finalY + 15);
-    docPdf.text(money(total), 196, finalY + 15, { align: "right" });
+    docPdf.setDrawColor(225, 225, 225);
+    docPdf.setFillColor(248, 248, 248);
+    docPdf.roundedRect(122, finalY - 6, 74, 30, 2, 2, "FD");
 
-    docPdf.setFont(undefined, "normal");
+    docPdf.setFont(PDF_FONT, "normal");
+    docPdf.setFontSize(9.5);
+    docPdf.setTextColor(80, 80, 80);
+    docPdf.text("Subtotal:", 128, finalY);
+    docPdf.text(money(subtotal), 191, finalY, { align: "right" });
+    docPdf.text("IVA (13%):", 128, finalY + 6.5);
+    docPdf.text(money(iva), 191, finalY + 6.5, { align: "right" });
+
+    docPdf.setDrawColor(...ACCENT_RGB);
+    docPdf.line(128, finalY + 10, 191, finalY + 10);
+
+    docPdf.setFont(PDF_FONT, "bold");
+    docPdf.setFontSize(13);
+    docPdf.setTextColor(...ACCENT_RGB);
+    docPdf.text("Total:", 128, finalY + 18);
+    docPdf.text(money(total), 191, finalY + 18, { align: "right" });
+
+    // ---- Pie de página ----
+    const pageHeight = docPdf.internal.pageSize.getHeight();
+    docPdf.setDrawColor(230, 230, 230);
+    docPdf.line(14, pageHeight - 22, 196, pageHeight - 22);
+    docPdf.setFont(PDF_FONT, "normal");
     docPdf.setFontSize(9);
-    docPdf.setTextColor(120);
-    docPdf.text("Gracias por su preferencia.", 14, finalY + 26);
+    docPdf.setTextColor(120, 120, 120);
+    docPdf.text("Gracias por su preferencia.", 14, pageHeight - 15);
+    docPdf.setFontSize(7.5);
+    docPdf.text(
+      `${DATOS_TALLER.nombre} · ${DATOS_TALLER.telefono} · ${DATOS_TALLER.correo}  —  Comprobante interno de servicio, no es factura electrónica de Hacienda.`,
+      14, pageHeight - 10
+    );
 
     return docPdf;
   }
@@ -605,11 +711,121 @@ export default function App() {
   }
   async function deleteFactura(id) { await deleteDoc(doc(db, "facturas", id)); }
 
-  // Envío por correo: descarga el PDF y abre un borrador de correo ya dirigido al cliente para adjuntarlo.
-  // (Enviarlo automático con el PDF adjunto, sin intervención manual, requiere EmailJS de pago o un backend propio.)
+  // Envía la factura con EmailJS incluyendo el PDF como adjunto real, usando emailjs.sendForm()
+  // con un <form> oculto y un <input type="file"> simulado (truco con DataTransfer). Esto funciona
+  // en el plan gratuito de EmailJS porque usa el mismo mecanismo que un formulario HTML normal con
+  // adjunto — a diferencia de mandar el adjunto "a mano" por la API, que sí requiere plan de pago.
+  // Para que funcione, en el Template de EmailJS debes configurar el campo "Attachment" apuntando
+  // al input llamado "attachment" (ver instrucciones en el README).
+  async function enviarFacturaEmailJSConAdjunto(f, cliente, numeroTexto) {
+    const docPdf = generarFacturaPDF(f);
+    const blobPdf = docPdf.output("blob");
+    const archivoPdf = new File([blobPdf], `Factura-${numeroTexto}.pdf`, { type: "application/pdf" });
+
+    const form = document.createElement("form");
+    form.style.display = "none";
+
+    const campos = {
+      to_email: cliente.correo,
+      to_name: cliente.nombre || "",
+      numero_factura: numeroTexto,
+      monto: money(f.monto),
+      fecha: f.fecha || "",
+      taller_nombre: DATOS_TALLER.nombre,
+    };
+    Object.entries(campos).forEach(([nombre, valor]) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = nombre;
+      input.value = valor;
+      form.appendChild(input);
+    });
+
+    const inputArchivo = document.createElement("input");
+    inputArchivo.type = "file";
+    inputArchivo.name = "attachment";
+    const transferencia = new DataTransfer();
+    transferencia.items.add(archivoPdf);
+    inputArchivo.files = transferencia.files;
+    form.appendChild(inputArchivo);
+
+    document.body.appendChild(form);
+    try {
+      await emailjs.sendForm(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, form, EMAILJS_PUBLIC_KEY);
+    } finally {
+      document.body.removeChild(form);
+    }
+  }
+
+  // Envío por correo, en orden de preferencia:
+  // 1) Cloud Function propia (enviarFacturaCorreo) — envío 100% automático con el PDF ya adjunto.
+  // 2) EmailJS con adjunto (sendForm), si está configurado.
+  // 3) EmailJS solo texto (sin adjunto), como respaldo si el adjunto falla.
+  // 4) Respaldo manual — descarga el PDF y abre un borrador de correo para adjuntarlo a mano.
   async function marcarEnviada(f) {
     const cliente = clientes.find((c) => c.id === f.clienteId);
     const numeroTexto = formatoNumeroFactura(f.numero);
+    setSaveError("");
+
+    if (!cliente?.correo) {
+      setSaveError("Este cliente no tiene correo registrado; agrégaselo en Clientes para poder enviarle la factura.");
+      return;
+    }
+
+    // 1) Cloud Function propia: genera el PDF en base64 y lo envía adjunto por correo desde el servidor.
+    try {
+      const docPdf = generarFacturaPDF(f);
+      const pdfBase64 = docPdf.output("datauristring").split(",")[1];
+      const enviarFacturaCorreo = httpsCallable(functions, "enviarFacturaCorreo");
+      await enviarFacturaCorreo({
+        to: cliente.correo,
+        nombreCliente: cliente.nombre || "",
+        numeroFactura: numeroTexto,
+        monto: money(f.monto),
+        fecha: f.fecha || "",
+        tallerNombre: DATOS_TALLER.nombre,
+        pdfBase64,
+      });
+      await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
+      return;
+    } catch (err) {
+      console.error("Error al enviar por la Cloud Function (¿está desplegada?):", err);
+      // Si la función no está desplegada o falla, sigue con las siguientes opciones en vez de detenerse aquí.
+    }
+
+    // 2) EmailJS con el PDF adjunto.
+    if (emailjsConfigurado) {
+      try {
+        await enviarFacturaEmailJSConAdjunto(f, cliente, numeroTexto);
+        await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
+        return;
+      } catch (err) {
+        console.error("Error al enviar con adjunto vía EmailJS:", err);
+      }
+
+      // 3) EmailJS sin adjunto (si el intento con adjunto falló, al menos llega el aviso por texto).
+      try {
+        await emailjs.send(
+          EMAILJS_SERVICE_ID,
+          EMAILJS_TEMPLATE_ID,
+          {
+            to_email: cliente.correo,
+            to_name: cliente.nombre || "",
+            numero_factura: numeroTexto,
+            monto: money(f.monto),
+            fecha: f.fecha || "",
+            taller_nombre: DATOS_TALLER.nombre,
+          },
+          EMAILJS_PUBLIC_KEY
+        );
+        await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
+        return;
+      } catch (err) {
+        console.error("Error al enviar correo con EmailJS:", err);
+      }
+    }
+
+    // 4) Respaldo manual: descarga el PDF y abre el correo ya redactado para adjuntarlo.
     descargarFacturaPDF(f);
     const asunto = encodeURIComponent(`Factura ${numeroTexto} - ${DATOS_TALLER.nombre}`);
     const cuerpo = encodeURIComponent(
@@ -990,6 +1206,7 @@ export default function App() {
           <div>
             <PageHeader title="Facturación" subtitle={`${facturas.length} facturas emitidas`}
               action={<button onClick={openNewFactura} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Generar factura</button>} />
+            {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 14, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "10px 14px" }}>{saveError}</div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {facturas.map((f, i) => {
                 const cliente = clientes.find((c) => c.id === f.clienteId);
