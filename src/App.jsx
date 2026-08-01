@@ -156,6 +156,7 @@ export default function App() {
   const [loginUsuario, setLoginUsuario] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -227,15 +228,21 @@ export default function App() {
 
   const vehiculosByCliente = (clienteId) => vehiculos.filter((v) => v.clienteId === clienteId);
 
-  function openNewCliente() { setEditingCliente(null); setClienteForm({ nombre: "", telefono: "", correo: "" }); setShowClienteModal(true); }
-  function openEditCliente(c) { setEditingCliente(c.id); setClienteForm({ nombre: c.nombre, telefono: c.telefono, correo: c.correo || "" }); setShowClienteModal(true); }
+  function openNewCliente() { setSaveError(""); setEditingCliente(null); setClienteForm({ nombre: "", telefono: "", correo: "" }); setShowClienteModal(true); }
+  function openEditCliente(c) { setSaveError(""); setEditingCliente(c.id); setClienteForm({ nombre: c.nombre, telefono: c.telefono, correo: c.correo || "" }); setShowClienteModal(true); }
   async function saveCliente() {
     if (!clienteForm.nombre.trim()) return;
-    if (editingCliente) await updateDoc(doc(db, "clientes", editingCliente), clienteForm);
-    else await addDoc(collection(db, "clientes"), clienteForm);
-    setShowClienteModal(false);
-    setEditingCliente(null);
-    setClienteForm({ nombre: "", telefono: "", correo: "" });
+    setSaveError("");
+    try {
+      if (editingCliente) await updateDoc(doc(db, "clientes", editingCliente), clienteForm);
+      else await addDoc(collection(db, "clientes"), clienteForm);
+      setShowClienteModal(false);
+      setEditingCliente(null);
+      setClienteForm({ nombre: "", telefono: "", correo: "" });
+    } catch (err) {
+      console.error("Error al guardar cliente:", err);
+      setSaveError(err.message || "No se pudo guardar el cliente.");
+    }
   }
   async function deleteCliente(id) {
     await deleteDoc(doc(db, "clientes", id));
@@ -247,15 +254,21 @@ export default function App() {
   const [editingVehiculo, setEditingVehiculo] = useState(null);
   const [vehiculoForm, setVehiculoForm] = useState({ clienteId: "", placa: "", marca: "", modelo: "", anio: "", km: "" });
 
-  function openNewVehiculo(clienteId) { setEditingVehiculo(null); setVehiculoForm({ clienteId: clienteId || "", placa: "", marca: "", modelo: "", anio: "", km: "" }); setShowVehiculoModal(true); }
-  function openEditVehiculo(v) { setEditingVehiculo(v.id); setVehiculoForm({ clienteId: v.clienteId, placa: v.placa, marca: v.marca, modelo: v.modelo, anio: v.anio, km: v.km }); setShowVehiculoModal(true); }
+  function openNewVehiculo(clienteId) { setSaveError(""); setEditingVehiculo(null); setVehiculoForm({ clienteId: clienteId || "", placa: "", marca: "", modelo: "", anio: "", km: "" }); setShowVehiculoModal(true); }
+  function openEditVehiculo(v) { setSaveError(""); setEditingVehiculo(v.id); setVehiculoForm({ clienteId: v.clienteId, placa: v.placa, marca: v.marca, modelo: v.modelo, anio: v.anio, km: v.km }); setShowVehiculoModal(true); }
   async function saveVehiculo() {
     if (!vehiculoForm.placa.trim() || !vehiculoForm.clienteId) return;
-    if (editingVehiculo) await updateDoc(doc(db, "vehiculos", editingVehiculo), vehiculoForm);
-    else await addDoc(collection(db, "vehiculos"), vehiculoForm);
-    setShowVehiculoModal(false);
-    setEditingVehiculo(null);
-    setVehiculoForm({ clienteId: "", placa: "", marca: "", modelo: "", anio: "", km: "" });
+    setSaveError("");
+    try {
+      if (editingVehiculo) await updateDoc(doc(db, "vehiculos", editingVehiculo), vehiculoForm);
+      else await addDoc(collection(db, "vehiculos"), vehiculoForm);
+      setShowVehiculoModal(false);
+      setEditingVehiculo(null);
+      setVehiculoForm({ clienteId: "", placa: "", marca: "", modelo: "", anio: "", km: "" });
+    } catch (err) {
+      console.error("Error al guardar vehículo:", err);
+      setSaveError(err.message || "No se pudo guardar el vehículo.");
+    }
   }
   async function deleteVehiculo(id) { await deleteDoc(doc(db, "vehiculos", id)); }
 
@@ -266,15 +279,21 @@ export default function App() {
 
   const citasOrdenadas = useMemo(() => [...citas].sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora)), [citas]);
 
-  function openNewCita() { setEditingCita(null); setCitaForm({ clienteId: "", vehiculoId: "", fecha: "", hora: "", servicio: "", estado: "pendiente" }); setShowCitaModal(true); }
-  function openEditCita(c) { setEditingCita(c.id); setCitaForm({ clienteId: c.clienteId, vehiculoId: c.vehiculoId, fecha: c.fecha, hora: c.hora, servicio: c.servicio, estado: c.estado || "pendiente" }); setShowCitaModal(true); }
+  function openNewCita() { setSaveError(""); setEditingCita(null); setCitaForm({ clienteId: "", vehiculoId: "", fecha: "", hora: "", servicio: "", estado: "pendiente" }); setShowCitaModal(true); }
+  function openEditCita(c) { setSaveError(""); setEditingCita(c.id); setCitaForm({ clienteId: c.clienteId, vehiculoId: c.vehiculoId, fecha: c.fecha, hora: c.hora, servicio: c.servicio, estado: c.estado || "pendiente" }); setShowCitaModal(true); }
   async function saveCita() {
     if (!citaForm.clienteId || !citaForm.fecha || !citaForm.hora) return;
-    if (editingCita) await updateDoc(doc(db, "citas", editingCita), citaForm);
-    else await addDoc(collection(db, "citas"), citaForm);
-    setShowCitaModal(false);
-    setEditingCita(null);
-    setCitaForm({ clienteId: "", vehiculoId: "", fecha: "", hora: "", servicio: "", estado: "pendiente" });
+    setSaveError("");
+    try {
+      if (editingCita) await updateDoc(doc(db, "citas", editingCita), citaForm);
+      else await addDoc(collection(db, "citas"), citaForm);
+      setShowCitaModal(false);
+      setEditingCita(null);
+      setCitaForm({ clienteId: "", vehiculoId: "", fecha: "", hora: "", servicio: "", estado: "pendiente" });
+    } catch (err) {
+      console.error("Error al guardar cita:", err);
+      setSaveError(err.message || "No se pudo guardar la cita.");
+    }
   }
   async function deleteCita(id) { await deleteDoc(doc(db, "citas", id)); }
   async function toggleEstadoCita(c) {
@@ -287,15 +306,21 @@ export default function App() {
   const [editingProveedor, setEditingProveedor] = useState(null);
   const [proveedorForm, setProveedorForm] = useState({ nombre: "", contacto: "", telefono: "", suministra: "" });
 
-  function openNewProveedor() { setEditingProveedor(null); setProveedorForm({ nombre: "", contacto: "", telefono: "", suministra: "" }); setShowProveedorModal(true); }
-  function openEditProveedor(p) { setEditingProveedor(p.id); setProveedorForm({ nombre: p.nombre, contacto: p.contacto || "", telefono: p.telefono || "", suministra: p.suministra || "" }); setShowProveedorModal(true); }
+  function openNewProveedor() { setSaveError(""); setEditingProveedor(null); setProveedorForm({ nombre: "", contacto: "", telefono: "", suministra: "" }); setShowProveedorModal(true); }
+  function openEditProveedor(p) { setSaveError(""); setEditingProveedor(p.id); setProveedorForm({ nombre: p.nombre, contacto: p.contacto || "", telefono: p.telefono || "", suministra: p.suministra || "" }); setShowProveedorModal(true); }
   async function saveProveedor() {
     if (!proveedorForm.nombre.trim()) return;
-    if (editingProveedor) await updateDoc(doc(db, "proveedores", editingProveedor), proveedorForm);
-    else await addDoc(collection(db, "proveedores"), proveedorForm);
-    setShowProveedorModal(false);
-    setEditingProveedor(null);
-    setProveedorForm({ nombre: "", contacto: "", telefono: "", suministra: "" });
+    setSaveError("");
+    try {
+      if (editingProveedor) await updateDoc(doc(db, "proveedores", editingProveedor), proveedorForm);
+      else await addDoc(collection(db, "proveedores"), proveedorForm);
+      setShowProveedorModal(false);
+      setEditingProveedor(null);
+      setProveedorForm({ nombre: "", contacto: "", telefono: "", suministra: "" });
+    } catch (err) {
+      console.error("Error al guardar proveedor:", err);
+      setSaveError(err.message || "No se pudo guardar el proveedor.");
+    }
   }
   async function deleteProveedor(id) { await deleteDoc(doc(db, "proveedores", id)); }
 
@@ -304,16 +329,22 @@ export default function App() {
   const [editingRepuesto, setEditingRepuesto] = useState(null);
   const [repuestoForm, setRepuestoForm] = useState({ nombre: "", stock: "", precioCompra: "", precioVenta: "", proveedorId: "" });
 
-  function openNewRepuesto() { setEditingRepuesto(null); setRepuestoForm({ nombre: "", stock: "", precioCompra: "", precioVenta: "", proveedorId: "" }); setShowRepuestoModal(true); }
-  function openEditRepuesto(r) { setEditingRepuesto(r.id); setRepuestoForm({ nombre: r.nombre, stock: r.stock, precioCompra: r.precioCompra, precioVenta: r.precioVenta, proveedorId: r.proveedorId || "" }); setShowRepuestoModal(true); }
+  function openNewRepuesto() { setSaveError(""); setEditingRepuesto(null); setRepuestoForm({ nombre: "", stock: "", precioCompra: "", precioVenta: "", proveedorId: "" }); setShowRepuestoModal(true); }
+  function openEditRepuesto(r) { setSaveError(""); setEditingRepuesto(r.id); setRepuestoForm({ nombre: r.nombre, stock: r.stock, precioCompra: r.precioCompra, precioVenta: r.precioVenta, proveedorId: r.proveedorId || "" }); setShowRepuestoModal(true); }
   async function saveRepuesto() {
     if (!repuestoForm.nombre.trim()) return;
-    const payload = { ...repuestoForm, stock: Number(repuestoForm.stock) || 0, precioCompra: Number(repuestoForm.precioCompra) || 0, precioVenta: Number(repuestoForm.precioVenta) || 0 };
-    if (editingRepuesto) await updateDoc(doc(db, "repuestos", editingRepuesto), payload);
-    else await addDoc(collection(db, "repuestos"), payload);
-    setShowRepuestoModal(false);
-    setEditingRepuesto(null);
-    setRepuestoForm({ nombre: "", stock: "", precioCompra: "", precioVenta: "", proveedorId: "" });
+    setSaveError("");
+    try {
+      const payload = { ...repuestoForm, stock: Number(repuestoForm.stock) || 0, precioCompra: Number(repuestoForm.precioCompra) || 0, precioVenta: Number(repuestoForm.precioVenta) || 0 };
+      if (editingRepuesto) await updateDoc(doc(db, "repuestos", editingRepuesto), payload);
+      else await addDoc(collection(db, "repuestos"), payload);
+      setShowRepuestoModal(false);
+      setEditingRepuesto(null);
+      setRepuestoForm({ nombre: "", stock: "", precioCompra: "", precioVenta: "", proveedorId: "" });
+    } catch (err) {
+      console.error("Error al guardar repuesto:", err);
+      setSaveError(err.message || "No se pudo guardar el repuesto.");
+    }
   }
   async function deleteRepuesto(id) { await deleteDoc(doc(db, "repuestos", id)); }
 
@@ -341,11 +372,13 @@ export default function App() {
   }, [ordenForm.items, ordenForm.manoObra]);
 
   function openNewOrden() {
+    setSaveError("");
     setEditingOrden(null);
     setOrdenForm({ vehiculoId: "", items: [], manoObra: "", estado: "abierta", fecha: new Date().toISOString().slice(0, 10) });
     setShowOrdenModal(true);
   }
   function openEditOrden(o) {
+    setSaveError("");
     setEditingOrden(o.id);
     setOrdenForm({ vehiculoId: o.vehiculoId, items: o.items || [], manoObra: o.manoObra || "", estado: o.estado || "abierta", fecha: o.fecha || "" });
     setShowOrdenModal(true);
@@ -369,23 +402,29 @@ export default function App() {
   }
   async function saveOrden() {
     if (!ordenForm.vehiculoId) return;
-    const vehiculo = vehiculos.find((v) => v.id === ordenForm.vehiculoId);
-    const payload = { ...ordenForm, clienteId: vehiculo?.clienteId || "", costoTotal: costoOrdenActual };
-    if (editingOrden) {
-      await updateDoc(doc(db, "ordenes", editingOrden), payload);
-    } else {
-      await addDoc(collection(db, "ordenes"), payload);
-      // Descuenta stock de repuestos usados
-      for (const it of ordenForm.items) {
-        if (it.tipo === "repuesto") {
-          const r = repuestos.find((x) => x.id === it.refId);
-          if (r) await updateDoc(doc(db, "repuestos", r.id), { stock: Math.max(0, (Number(r.stock) || 0) - it.cantidad) });
+    setSaveError("");
+    try {
+      const vehiculo = vehiculos.find((v) => v.id === ordenForm.vehiculoId);
+      const payload = { ...ordenForm, clienteId: vehiculo?.clienteId || "", costoTotal: costoOrdenActual };
+      if (editingOrden) {
+        await updateDoc(doc(db, "ordenes", editingOrden), payload);
+      } else {
+        await addDoc(collection(db, "ordenes"), payload);
+        // Descuenta stock de repuestos usados
+        for (const it of ordenForm.items) {
+          if (it.tipo === "repuesto") {
+            const r = repuestos.find((x) => x.id === it.refId);
+            if (r) await updateDoc(doc(db, "repuestos", r.id), { stock: Math.max(0, (Number(r.stock) || 0) - it.cantidad) });
+          }
         }
       }
+      setShowOrdenModal(false);
+      setEditingOrden(null);
+      setOrdenForm({ vehiculoId: "", items: [], manoObra: "", estado: "abierta", fecha: "" });
+    } catch (err) {
+      console.error("Error al guardar orden:", err);
+      setSaveError(err.message || "No se pudo guardar la orden.");
     }
-    setShowOrdenModal(false);
-    setEditingOrden(null);
-    setOrdenForm({ vehiculoId: "", items: [], manoObra: "", estado: "abierta", fecha: "" });
   }
   async function deleteOrden(id) { await deleteDoc(doc(db, "ordenes", id)); }
   async function cambiarEstadoOrden(o, estado) { await updateDoc(doc(db, "ordenes", o.id), { estado }); }
@@ -396,6 +435,7 @@ export default function App() {
   const [revisionForm, setRevisionForm] = useState({ ordenId: "", tipo: "entrada", km: "", notas: "", checklist: {} });
 
   function openNewRevision() {
+    setSaveError("");
     setRevisionForm({ ordenId: "", tipo: "entrada", km: "", notas: "", checklist: {} });
     setShowRevisionModal(true);
   }
@@ -404,9 +444,15 @@ export default function App() {
   }
   async function saveRevision() {
     if (!revisionForm.ordenId) return;
-    await addDoc(collection(db, "revisiones"), revisionForm);
-    setShowRevisionModal(false);
-    setRevisionForm({ ordenId: "", tipo: "entrada", km: "", notas: "", checklist: {} });
+    setSaveError("");
+    try {
+      await addDoc(collection(db, "revisiones"), revisionForm);
+      setShowRevisionModal(false);
+      setRevisionForm({ ordenId: "", tipo: "entrada", km: "", notas: "", checklist: {} });
+    } catch (err) {
+      console.error("Error al guardar revisión:", err);
+      setSaveError(err.message || "No se pudo guardar la revisión.");
+    }
   }
   async function deleteRevision(id) { await deleteDoc(doc(db, "revisiones", id)); }
 
@@ -414,17 +460,23 @@ export default function App() {
   const [showFacturaModal, setShowFacturaModal] = useState(false);
   const [facturaForm, setFacturaForm] = useState({ ordenId: "", monto: "", estadoEnvio: "pendiente" });
 
-  function openNewFactura() { setFacturaForm({ ordenId: "", monto: "", estadoEnvio: "pendiente" }); setShowFacturaModal(true); }
+  function openNewFactura() { setSaveError(""); setFacturaForm({ ordenId: "", monto: "", estadoEnvio: "pendiente" }); setShowFacturaModal(true); }
   function seleccionarOrdenFactura(ordenId) {
     const o = ordenes.find((x) => x.id === ordenId);
     setFacturaForm({ ordenId, monto: o ? o.costoTotal : "", estadoEnvio: "pendiente" });
   }
   async function saveFactura() {
     if (!facturaForm.ordenId) return;
-    const o = ordenes.find((x) => x.id === facturaForm.ordenId);
-    await addDoc(collection(db, "facturas"), { ...facturaForm, clienteId: o?.clienteId || "", fecha: new Date().toISOString().slice(0, 10) });
-    setShowFacturaModal(false);
-    setFacturaForm({ ordenId: "", monto: "", estadoEnvio: "pendiente" });
+    setSaveError("");
+    try {
+      const o = ordenes.find((x) => x.id === facturaForm.ordenId);
+      await addDoc(collection(db, "facturas"), { ...facturaForm, clienteId: o?.clienteId || "", fecha: new Date().toISOString().slice(0, 10) });
+      setShowFacturaModal(false);
+      setFacturaForm({ ordenId: "", monto: "", estadoEnvio: "pendiente" });
+    } catch (err) {
+      console.error("Error al guardar factura:", err);
+      setSaveError(err.message || "No se pudo guardar la factura.");
+    }
   }
   async function deleteFactura(id) { await deleteDoc(doc(db, "facturas", id)); }
   async function marcarEnviada(f) {
@@ -872,6 +924,7 @@ export default function App() {
           <input autoComplete="off" style={inputStyle} value={clienteForm.telefono} onChange={(e) => setClienteForm({ ...clienteForm, telefono: e.target.value })} placeholder="8888-1234" />
           <FieldLabel>Correo (opcional)</FieldLabel>
           <input autoComplete="off" style={inputStyle} value={clienteForm.correo} onChange={(e) => setClienteForm({ ...clienteForm, correo: e.target.value })} placeholder="correo@ejemplo.com" />
+          {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{saveError}</div>}
           <button style={btnPrimary} onClick={saveCliente}>Guardar cliente</button>
         </Modal>
       )}
@@ -893,6 +946,7 @@ export default function App() {
             <div><FieldLabel>Año</FieldLabel><input autoComplete="off" style={inputStyle} value={vehiculoForm.anio} onChange={(e) => setVehiculoForm({ ...vehiculoForm, anio: e.target.value })} placeholder="2019" /></div>
             <div><FieldLabel>Kilometraje</FieldLabel><input autoComplete="off" style={inputStyle} value={vehiculoForm.km} onChange={(e) => setVehiculoForm({ ...vehiculoForm, km: e.target.value })} placeholder="82,400" /></div>
           </div>
+          {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{saveError}</div>}
           <button style={btnPrimary} onClick={saveVehiculo}>Guardar vehículo</button>
         </Modal>
       )}
@@ -915,6 +969,7 @@ export default function App() {
           </div>
           <FieldLabel>Servicio</FieldLabel>
           <input autoComplete="off" style={inputStyle} value={citaForm.servicio} onChange={(e) => setCitaForm({ ...citaForm, servicio: e.target.value })} placeholder="Ej. Cambio de aceite" />
+          {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{saveError}</div>}
           <button style={btnPrimary} onClick={saveCita}>Guardar cita</button>
         </Modal>
       )}
@@ -929,6 +984,7 @@ export default function App() {
           <input autoComplete="off" style={inputStyle} value={proveedorForm.telefono} onChange={(e) => setProveedorForm({ ...proveedorForm, telefono: e.target.value })} placeholder="8888-1234" />
           <FieldLabel>Qué suministra</FieldLabel>
           <input autoComplete="off" style={inputStyle} value={proveedorForm.suministra} onChange={(e) => setProveedorForm({ ...proveedorForm, suministra: e.target.value })} placeholder="Ej. Frenos, filtros, aceites" />
+          {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{saveError}</div>}
           <button style={btnPrimary} onClick={saveProveedor}>Guardar proveedor</button>
         </Modal>
       )}
@@ -950,6 +1006,7 @@ export default function App() {
             <div><FieldLabel>Precio de compra</FieldLabel><input autoComplete="off" style={inputStyle} value={repuestoForm.precioCompra} onChange={(e) => setRepuestoForm({ ...repuestoForm, precioCompra: e.target.value })} placeholder="5000" /></div>
             <div><FieldLabel>Precio de venta</FieldLabel><input autoComplete="off" style={inputStyle} value={repuestoForm.precioVenta} onChange={(e) => setRepuestoForm({ ...repuestoForm, precioVenta: e.target.value })} placeholder="8000" /></div>
           </div>
+          {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{saveError}</div>}
           <button style={btnPrimary} onClick={saveRepuesto}>Guardar repuesto</button>
         </Modal>
       )}
@@ -996,6 +1053,7 @@ export default function App() {
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
             <span>Total</span><span>{money(costoOrdenActual)}</span>
           </div>
+          {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{saveError}</div>}
           <button style={btnPrimary} onClick={saveOrden}>Guardar orden</button>
         </Modal>
       )}
@@ -1027,6 +1085,7 @@ export default function App() {
           </div>
           <FieldLabel>Notas</FieldLabel>
           <textarea autoComplete="off" style={{ ...inputStyle, minHeight: 60 }} value={revisionForm.notas} onChange={(e) => setRevisionForm({ ...revisionForm, notas: e.target.value })} placeholder="Observaciones adicionales..." />
+          {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{saveError}</div>}
           <button style={btnPrimary} onClick={saveRevision}>Guardar revisión</button>
         </Modal>
       )}
@@ -1043,6 +1102,7 @@ export default function App() {
           </select>
           <FieldLabel>Monto</FieldLabel>
           <input autoComplete="off" style={inputStyle} value={facturaForm.monto} onChange={(e) => setFacturaForm({ ...facturaForm, monto: e.target.value })} placeholder="0" />
+          {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{saveError}</div>}
           <button style={btnPrimary} onClick={saveFactura}>Guardar factura</button>
         </Modal>
       )}
