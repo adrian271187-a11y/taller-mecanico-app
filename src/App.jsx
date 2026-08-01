@@ -168,12 +168,13 @@ function registrarFuentePDF(docPdf) {
   docPdf.setFont(PDF_FONT, "normal");
 }
 
-// Dibuja un engranaje como marca de agua sutil (temática de taller mecánico) detrás del contenido
-function dibujarEngranajeMarcaDeAgua(docPdf, cx, cy, radio, dientes, opacidad) {
+// Dibuja un engranaje (temática de taller mecánico), reutilizable como marca de agua sutil
+// o como elemento decorativo más visible, según la opacidad y el color que se le pasen.
+function dibujarEngranaje(docPdf, cx, cy, radio, dientes, opacidad, colorRGB = [150, 150, 150]) {
   docPdf.saveGraphicsState();
   docPdf.setGState(new docPdf.GState({ opacity: opacidad }));
-  docPdf.setDrawColor(150, 150, 150);
-  docPdf.setFillColor(150, 150, 150);
+  docPdf.setDrawColor(...colorRGB);
+  docPdf.setFillColor(...colorRGB);
   docPdf.setLineWidth(1.2);
 
   docPdf.circle(cx, cy, radio, "S");
@@ -202,6 +203,29 @@ function dibujarEngranajeMarcaDeAgua(docPdf, cx, cy, radio, dientes, opacidad) {
     );
   }
   docPdf.restoreGraphicsState();
+}
+
+// Dibuja una franja de rayas diagonales (acento gráfico tipo "cinta de precaución" de taller)
+function dibujarFranjasDiagonales(docPdf, x, y, w, h, colorRGB = [20, 20, 20]) {
+  docPdf.saveGraphicsState();
+  docPdf.setDrawColor(...colorRGB);
+  docPdf.setLineWidth(2.6);
+  const paso = 5.5;
+  for (let offset = -h; offset < w + h; offset += paso) {
+    const x1 = x + offset;
+    const y1 = y + h;
+    const x2 = x + offset + h;
+    const y2 = y;
+    docPdf.line(Math.max(x, Math.min(x + w, x1)), y1, Math.max(x, Math.min(x + w, x2)), y2);
+  }
+  docPdf.restoreGraphicsState();
+}
+
+// Dibuja una insignia circular tipo "logo" con un engranaje adentro, como la de un taller
+function dibujarInsigniaLogo(docPdf, cx, cy, radio, colorRGB) {
+  docPdf.setFillColor(...colorRGB);
+  docPdf.circle(cx, cy, radio, "F");
+  dibujarEngranaje(docPdf, cx, cy, radio * 0.5, 8, 1, [255, 255, 255]);
 }
 
 export default function App() {
@@ -551,9 +575,12 @@ export default function App() {
   }
 
   // Genera el PDF de la factura (comprobante interno del taller — no es una factura electrónica de Hacienda).
-  // Toma como referencia el formato típico de un taller automotriz: encabezado del negocio, datos del
-  // cliente y vehículo, detalle de servicios/repuestos, y el desglose de subtotal + IVA + total.
+  // Diseño inspirado en el formato clásico de "invoice" de taller automotriz: franja diagonal,
+  // título grande en rojo, insignia circular tipo logo, engranajes decorativos, tabla con
+  // encabezado oscuro, y cajas de Términos/Información de pago + Totales.
   const ACCENT_RGB = [255, 106, 46];
+  const ROJO_RGB = [214, 40, 40];
+  const OSCURO_RGB = [26, 26, 26];
 
   function generarFacturaPDF(f) {
     const o = ordenes.find((x) => x.id === f.ordenId);
@@ -564,120 +591,132 @@ export default function App() {
     const docPdf = new jsPDF({ unit: "mm", format: "a4" });
     registrarFuentePDF(docPdf);
 
-    // Marca de agua de engranaje (temática de taller), detrás de todo el contenido
-    dibujarEngranajeMarcaDeAgua(docPdf, 178, 165, 42, 12, 0.045);
-    dibujarEngranajeMarcaDeAgua(docPdf, 25, 260, 26, 10, 0.04);
+    // ---- Fondo decorativo: franja diagonal arriba a la izquierda + engranajes ----
+    dibujarFranjasDiagonales(docPdf, 14, 10, 62, 14, OSCURO_RGB);
+    dibujarEngranaje(docPdf, 150, 20, 9, 9, 0.55, [200, 200, 200]);
+    dibujarEngranaje(docPdf, 197, 11, 6, 8, 0.55, [150, 150, 150]);
+    dibujarEngranaje(docPdf, 178, 260, 11, 9, 0.85, [60, 60, 60]);
+    dibujarEngranaje(docPdf, 20, 258, 9, 8, 0.15, ACCENT_RGB);
+    dibujarEngranaje(docPdf, 160, 165, 40, 12, 0.045, [150, 150, 150]); // marca de agua central
 
-    // ---- Encabezado ----
-    docPdf.setFillColor(...ACCENT_RGB);
-    docPdf.rect(0, 0, 210, 34, "F");
-
-    docPdf.setTextColor(255, 255, 255);
+    // ---- Título ----
+    docPdf.setTextColor(...ROJO_RGB);
     docPdf.setFont(PDF_FONT, "bold");
-    docPdf.setFontSize(17);
-    docPdf.text(DATOS_TALLER.nombre, 14, 15);
-    docPdf.setFont(PDF_FONT, "normal");
-    docPdf.setFontSize(8.5);
-    docPdf.text("Servicio y reparación automotriz", 14, 21);
-    docPdf.text(`Cédula jurídica: ${DATOS_TALLER.cedulaJuridica}  ·  ${DATOS_TALLER.direccion}`, 14, 26.5);
-    docPdf.text(`Tel: ${DATOS_TALLER.telefono}  ·  ${DATOS_TALLER.correo}`, 14, 31);
+    docPdf.setFontSize(30);
+    docPdf.text("FACTURA", 14, 52);
 
-    docPdf.setFont(PDF_FONT, "bold");
-    docPdf.setFontSize(15);
-    docPdf.text("FACTURA", 196, 15, { align: "right" });
-    docPdf.setFont(PDF_FONT, "normal");
-    docPdf.setFontSize(9.5);
-    docPdf.text(`No. ${numeroTexto}`, 196, 22, { align: "right" });
-    docPdf.text(`Fecha: ${f.fecha || ""}`, 196, 27.5, { align: "right" });
+    docPdf.setTextColor(40, 40, 40);
+    docPdf.setFontSize(13);
+    docPdf.text(`No. ${numeroTexto}`, 14, 61);
 
-    // ---- Datos de cliente y vehículo (tarjetas) ----
-    docPdf.setTextColor(30, 30, 30);
-    const cardY = 42;
-    docPdf.setDrawColor(225, 225, 225);
-    docPdf.setFillColor(248, 248, 248);
-    docPdf.roundedRect(14, cardY, 88, 30, 2, 2, "FD");
-    docPdf.roundedRect(108, cardY, 88, 30, 2, 2, "FD");
-
+    // ---- Insignia circular tipo logo, arriba a la derecha ----
+    dibujarInsigniaLogo(docPdf, 178, 45, 13, ROJO_RGB);
     docPdf.setFont(PDF_FONT, "bold");
     docPdf.setFontSize(9);
-    docPdf.setTextColor(...ACCENT_RGB);
-    docPdf.text("CLIENTE", 18, cardY + 7);
-    docPdf.text("VEHÍCULO", 112, cardY + 7);
+    docPdf.setTextColor(30, 30, 30);
+    docPdf.text(DATOS_TALLER.nombre.toUpperCase(), 178, 64, { align: "center" });
 
+    // ---- Datos de cliente y fecha (estilo "surename / fecha / dirección") ----
+    docPdf.setFont(PDF_FONT, "bold");
+    docPdf.setFontSize(10);
+    docPdf.setTextColor(20, 20, 20);
+    docPdf.text((cliente?.nombre || "Cliente").toUpperCase(), 14, 74);
     docPdf.setFont(PDF_FONT, "normal");
     docPdf.setFontSize(9.5);
-    docPdf.setTextColor(40, 40, 40);
-    docPdf.text(`${cliente?.nombre || "—"}`, 18, cardY + 14);
-    docPdf.text(`Tel: ${cliente?.telefono || "—"}`, 18, cardY + 20);
-    docPdf.text(`Correo: ${cliente?.correo || "—"}`, 18, cardY + 26);
+    docPdf.setTextColor(70, 70, 70);
+    docPdf.text(`${f.fecha || ""}`, 14, 80);
+    const vehiculoLinea = vehiculo
+      ? `${vehiculo.placa || ""} · ${vehiculo.marca || ""} ${vehiculo.modelo || ""} ${vehiculo.anio || ""}`.trim()
+      : "—";
+    docPdf.text(vehiculoLinea, 14, 86);
+    docPdf.text(`Tel: ${cliente?.telefono || "—"}  ·  ${cliente?.correo || "—"}`, 14, 92);
 
-    docPdf.text(`Placa: ${vehiculo?.placa || "—"}`, 112, cardY + 14);
-    docPdf.text(`${vehiculo?.marca || ""} ${vehiculo?.modelo || ""} ${vehiculo?.anio || ""}`.trim() || "—", 112, cardY + 20);
-    docPdf.text(`Kilometraje: ${vehiculo?.km || "—"}`, 112, cardY + 26);
-
-    // ---- Detalle de servicios y repuestos ----
+    // ---- Tabla de servicios y repuestos (encabezado oscuro, como la referencia) ----
     const items = o?.items || [];
     const rows = items.map((it) => [
-      String(it.cantidad),
       `${it.nombre} (${it.tipo === "servicio" ? "Servicio" : "Repuesto"})`,
       money(it.precio),
+      String(it.cantidad),
       money(it.precio * it.cantidad),
     ]);
     if (Number(o?.manoObra) > 0) {
-      rows.push(["1", "Mano de obra", money(o.manoObra), money(o.manoObra)]);
+      rows.push(["Mano de obra", money(o.manoObra), "1", money(o.manoObra)]);
     }
-    if (rows.length === 0) rows.push(["—", "Servicio realizado", money(f.monto), money(f.monto)]);
+    if (rows.length === 0) rows.push(["Servicio realizado", money(f.monto), "—", money(f.monto)]);
 
     autoTable(docPdf, {
-      startY: cardY + 38,
-      head: [["Cant.", "Descripción", "Precio unitario", "Total"]],
+      startY: 100,
+      head: [["Descripción", "Precio", "Cant.", "Total"]],
       body: rows,
-      styles: { font: PDF_FONT, fontSize: 9, textColor: [40, 40, 40] },
-      headStyles: { font: PDF_FONT, fontStyle: "bold", fillColor: ACCENT_RGB, textColor: 255 },
-      alternateRowStyles: { fillColor: [250, 250, 250] },
-      columnStyles: { 0: { cellWidth: 16 }, 2: { halign: "right" }, 3: { halign: "right" } },
+      styles: { font: PDF_FONT, fontSize: 9, textColor: [40, 40, 40], lineColor: [225, 225, 225], lineWidth: 0.2 },
+      headStyles: { font: PDF_FONT, fontStyle: "bold", fillColor: OSCURO_RGB, textColor: 255 },
+      alternateRowStyles: { fillColor: [248, 248, 248] },
+      columnStyles: { 1: { halign: "right" }, 2: { halign: "center" }, 3: { halign: "right" } },
       margin: { left: 14, right: 14 },
     });
 
-    // ---- Totales ----
-    const finalY = docPdf.lastAutoTable.finalY + 10;
+    // ---- Términos y condiciones + Información de pago (izquierda) ----
+    const finalY = docPdf.lastAutoTable.finalY + 12;
+
+    docPdf.setFont(PDF_FONT, "bold");
+    docPdf.setFontSize(10);
+    docPdf.setTextColor(20, 20, 20);
+    docPdf.text("Términos y condiciones", 14, finalY);
+    docPdf.setFont(PDF_FONT, "normal");
+    docPdf.setFontSize(8.5);
+    docPdf.setTextColor(100, 100, 100);
+    const terminos = docPdf.splitTextToSize(
+      "El taller garantiza la mano de obra por 30 días. Los repuestos instalados mantienen la garantía del fabricante.",
+      92
+    );
+    docPdf.text(terminos, 14, finalY + 6);
+
+    docPdf.setFont(PDF_FONT, "bold");
+    docPdf.setFontSize(10);
+    docPdf.setTextColor(20, 20, 20);
+    docPdf.text("Información de pago", 14, finalY + 20);
+    docPdf.setFont(PDF_FONT, "normal");
+    docPdf.setFontSize(8.5);
+    docPdf.setTextColor(100, 100, 100);
+    docPdf.text(`Teléfono / SINPE Móvil : ${DATOS_TALLER.telefono}`, 14, finalY + 26);
+    docPdf.text(`Cédula jurídica            : ${DATOS_TALLER.cedulaJuridica}`, 14, finalY + 31);
+
+    // ---- Caja de totales (derecha), con el Total en rojo como la referencia ----
     const total = Number(f.monto) || 0;
     const subtotal = total / 1.13;
     const iva = total - subtotal;
 
-    docPdf.setDrawColor(225, 225, 225);
-    docPdf.setFillColor(248, 248, 248);
-    docPdf.roundedRect(122, finalY - 6, 74, 30, 2, 2, "FD");
+    docPdf.setDrawColor(30, 30, 30);
+    docPdf.setLineWidth(0.4);
+    docPdf.rect(122, finalY - 7, 74, 34);
 
     docPdf.setFont(PDF_FONT, "normal");
     docPdf.setFontSize(9.5);
-    docPdf.setTextColor(80, 80, 80);
-    docPdf.text("Subtotal:", 128, finalY);
-    docPdf.text(money(subtotal), 191, finalY, { align: "right" });
-    docPdf.text("IVA (13%):", 128, finalY + 6.5);
-    docPdf.text(money(iva), 191, finalY + 6.5, { align: "right" });
+    docPdf.setTextColor(60, 60, 60);
+    docPdf.text("Subtotal", 127, finalY);
+    docPdf.text(`: ${money(subtotal)}`, 191, finalY, { align: "right" });
+    docPdf.text("IVA (13%)", 127, finalY + 7);
+    docPdf.text(`: ${money(iva)}`, 191, finalY + 7, { align: "right" });
 
-    docPdf.setDrawColor(...ACCENT_RGB);
-    docPdf.line(128, finalY + 10, 191, finalY + 10);
+    docPdf.setDrawColor(210, 210, 210);
+    docPdf.line(127, finalY + 11, 191, finalY + 11);
 
     docPdf.setFont(PDF_FONT, "bold");
-    docPdf.setFontSize(13);
-    docPdf.setTextColor(...ACCENT_RGB);
-    docPdf.text("Total:", 128, finalY + 18);
-    docPdf.text(money(total), 191, finalY + 18, { align: "right" });
+    docPdf.setTextColor(...ROJO_RGB);
+    docPdf.setFontSize(11);
+    docPdf.text("Total General", 127, finalY + 19);
+    docPdf.text(`: ${money(total)}`, 191, finalY + 19, { align: "right" });
 
     // ---- Pie de página ----
     const pageHeight = docPdf.internal.pageSize.getHeight();
     docPdf.setDrawColor(230, 230, 230);
-    docPdf.line(14, pageHeight - 22, 196, pageHeight - 22);
+    docPdf.line(14, pageHeight - 18, 196, pageHeight - 18);
     docPdf.setFont(PDF_FONT, "normal");
-    docPdf.setFontSize(9);
-    docPdf.setTextColor(120, 120, 120);
-    docPdf.text("Gracias por su preferencia.", 14, pageHeight - 15);
-    docPdf.setFontSize(7.5);
+    docPdf.setFontSize(8);
+    docPdf.setTextColor(130, 130, 130);
     docPdf.text(
-      `${DATOS_TALLER.nombre} · ${DATOS_TALLER.telefono} · ${DATOS_TALLER.correo}  —  Comprobante interno de servicio, no es factura electrónica de Hacienda.`,
-      14, pageHeight - 10
+      `${DATOS_TALLER.nombre} · ${DATOS_TALLER.direccion} · ${DATOS_TALLER.telefono}  —  Comprobante interno de servicio, no es factura electrónica de Hacienda.`,
+      14, pageHeight - 11
     );
 
     return docPdf;
@@ -693,6 +732,7 @@ export default function App() {
     const docPdf = generarFacturaPDF(f);
     docPdf.save(`Factura-${formatoNumeroFactura(f.numero)}.pdf`);
   }
+
 
   async function saveFactura() {
     if (!facturaForm.ordenId) return;
