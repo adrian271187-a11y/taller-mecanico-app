@@ -36,6 +36,7 @@ const COLORS = {
 };
 
 // Imagen de fondo por módulo (una por cada vista del panel + login)
+// Nota: se evitan deliberadamente las fotos de muy baja resolución para que no se vean pixeladas.
 const BACKGROUNDS = {
   login: "/backgrounds/login.jpg",
   dashboard: "/backgrounds/dashboard.jpg",
@@ -50,16 +51,41 @@ const BACKGROUNDS = {
   estadisticas: "/backgrounds/estadisticas.jpg",
 };
 
-// Overlay oscuro para que el contenido siga siendo legible sobre la foto
+// Overlay oscuro para la pantalla de login (imagen de buena resolución, cubre bien sin perder nitidez)
 function moduleBackgroundStyle(key) {
   const img = BACKGROUNDS[key];
   if (!img) return {};
   return {
-    backgroundImage: `linear-gradient(rgba(14,17,20,0.90), rgba(14,17,20,0.94)), url(${img})`,
+    backgroundImage: `linear-gradient(rgba(14,17,20,0.72), rgba(14,17,20,0.85)), url(${img})`,
     backgroundSize: "cover",
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
   };
+}
+
+// Panel lateral con la foto del módulo: se muestra a su tamaño real (no estirada a pantalla completa)
+// para que no se vea pixelada, con un degradado que la funde hacia el fondo oscuro del panel.
+function ModulePhotoPanel({ view }) {
+  const img = BACKGROUNDS[view];
+  if (!img) return null;
+  return (
+    <div style={{
+      position: "absolute", top: 0, right: 0, bottom: 0, left: 0,
+      overflow: "hidden", pointerEvents: "none", zIndex: 0,
+    }}>
+      <div style={{
+        position: "absolute", top: 0, right: 0, bottom: 0,
+        width: "44%", minWidth: 300, maxWidth: 620,
+        backgroundImage: `url(${img})`,
+        backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat",
+      }} />
+      <div style={{
+        position: "absolute", top: 0, right: 0, bottom: 0,
+        width: "44%", minWidth: 300, maxWidth: 620,
+        background: `linear-gradient(to right, ${COLORS.bg} 0%, rgba(14,17,20,0.55) 30%, rgba(14,17,20,0.28) 65%, rgba(14,17,20,0.35) 100%)`,
+      }} />
+    </div>
+  );
 }
 
 function TicketBadge({ n }) {
@@ -466,7 +492,9 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ flex: 1, padding: "22px 28px", overflow: "auto", ...moduleBackgroundStyle(view) }}>
+      <div style={{ flex: 1, padding: "22px 28px", overflow: "auto", position: "relative" }}>
+        <ModulePhotoPanel view={view} />
+        <div style={{ position: "relative", zIndex: 1 }}>
 
         {view === "dashboard" && (
           <div>
@@ -819,6 +847,7 @@ export default function App() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {showClienteModal && (
