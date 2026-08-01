@@ -76,40 +76,9 @@ Los datos del taller que aparecen en el encabezado (nombre, cédula jurídica, d
 
 Mientras esas 3 constantes digan `"TU_..."`, el sistema usa automáticamente un respaldo manual (descarga el PDF y abre un borrador de correo para adjuntarlo) en vez de fallar en silencio — así que la app funciona igual antes y después de configurar EmailJS.
 
-Este método de adjuntar el PDF (formulario oculto con un archivo simulado) funciona en el plan gratuito de EmailJS porque usa el mismo mecanismo que un formulario HTML normal — a diferencia de mandar el adjunto directamente por su API, que si requiere plan de pago. Si por alguna razón EmailJS cambia esto y deja de funcionar, prueba primero sin el paso 4 (el correo igual llega, solo que sin el PDF) y usa la Cloud Function de abajo para el adjunto garantizado.
+Este método de adjuntar el PDF (formulario oculto con un archivo simulado) funciona en el plan gratuito de EmailJS porque usa el mismo mecanismo que un formulario HTML normal — a diferencia de mandar el adjunto directamente por su API, que sí requiere plan de pago.
 
-**Envío 100% automático con PDF adjunto (Cloud Function propia):** también está implementado en `functions/index.js`, como alternativa más robusta a EmailJS (no depende de límites de un plan gratuito de terceros). Cuando le das clic a "Enviar por correo", la app intenta primero esta función — si está desplegada, el cliente recibe el correo con el PDF ya adjunto. Si no está desplegada, cae automáticamente a EmailJS (si lo configuraste) o al respaldo manual, así que nada se rompe mientras la despliegas.
-
-**Cómo desplegar la Cloud Function:**
-
-1. **Activa el plan Blaze** (pago por uso) en tu proyecto de Firebase — es obligatorio para que las Cloud Functions puedan conectarse a internet (enviar el correo). El plan Blaze igual incluye una capa gratuita generosa; para el volumen de un taller esto normalmente no genera cobros, pero sí necesitas una tarjeta asociada. Se activa en Firebase Console → ⚙️ (Configuración del proyecto) → Uso y facturación → Modificar plan.
-
-2. **Crea una "Contraseña de aplicación" de Gmail** (la cuenta de correo desde la que se enviarán las facturas):
-   - Activa la verificación en 2 pasos en esa cuenta de Gmail (myaccount.google.com/security)
-   - Ve a myaccount.google.com/apppasswords y genera una contraseña de aplicación (16 caracteres) — **no uses tu contraseña normal de Gmail**
-
-3. **En la terminal**, dentro de la carpeta del proyecto (donde está `firebase.json`):
-```
-firebase login
-firebase use taller-automotriz-ab5ca
-cd functions
-npm install
-cd ..
-```
-
-4. **Guarda las credenciales de correo como "secrets"** (no quedan visibles en el código):
-```
-firebase functions:secrets:set GMAIL_USER
-firebase functions:secrets:set GMAIL_APP_PASSWORD
-```
-Te va a pedir el valor de cada uno — pega el correo de Gmail en el primero, y la contraseña de aplicación de 16 caracteres en el segundo.
-
-5. **Despliega la función:**
-```
-firebase deploy --only functions
-```
-
-Después de esto, el botón "Enviar por correo" ya envía la factura automáticamente con el PDF adjunto. Puedes ver los registros con `cd functions && npm run logs` si algo falla.
+El PDF se genera con compresión activada y con una fuente recortada al mínimo (solo los caracteres necesarios) para quedar bien por debajo del límite de 50KB que EmailJS impone en su plan gratuito para los datos del formulario. Si en algún momento una factura con muchos ítems se acerca a ese límite y el envío con adjunto falla, el sistema cae automáticamente al envío solo de texto (sin adjunto) y, si eso también falla, al respaldo manual (descarga el PDF y abre un borrador de correo para adjuntarlo a mano) — así nunca se queda sin enviar nada.
 
 ## Pendiente para siguientes pasos (opcional)
 - Fotos en la revisión de entrada/salida (Firebase Storage)

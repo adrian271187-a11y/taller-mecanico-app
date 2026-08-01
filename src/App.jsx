@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { db, auth, functions } from "./firebase";
+import { db, auth } from "./firebase";
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc,
 } from "firebase/firestore";
@@ -9,7 +9,6 @@ import {
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import emailjs from "@emailjs/browser";
-import { httpsCallable } from "firebase/functions";
 import { DEJAVU_SANS_REGULAR_BASE64, DEJAVU_SANS_BOLD_BASE64 } from "./fonts_dejavu";
 import {
   Wrench, Users, Car, Calendar, Package, Truck, Receipt,
@@ -527,7 +526,7 @@ export default function App() {
     const cliente = clientes.find((c) => c.id === f.clienteId);
     const numeroTexto = formatoNumeroFactura(f.numero);
 
-    const docPdf = new jsPDF({ unit: "mm", format: "a4" });
+    const docPdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
     registrarFuentePDF(docPdf);
 
     // ---- Franja superior de marca (único acento de color, sobrio) ----
@@ -765,10 +764,9 @@ export default function App() {
   }
 
   // Envío por correo, en orden de preferencia:
-  // 1) Cloud Function propia (enviarFacturaCorreo) — envío 100% automático con el PDF ya adjunto.
-  // 2) EmailJS con adjunto (sendForm), si está configurado.
-  // 3) EmailJS solo texto (sin adjunto), como respaldo si el adjunto falla.
-  // 4) Respaldo manual — descarga el PDF y abre un borrador de correo para adjuntarlo a mano.
+  // 1) EmailJS con adjunto (sendForm).
+  // 2) EmailJS solo texto (sin adjunto), como respaldo si el adjunto falla.
+  // 3) Respaldo manual — descarga el PDF y abre un borrador de correo para adjuntarlo a mano.
   async function marcarEnviada(f) {
     const cliente = clientes.find((c) => c.id === f.clienteId);
     const numeroTexto = formatoNumeroFactura(f.numero);
@@ -779,28 +777,7 @@ export default function App() {
       return;
     }
 
-    // 1) Cloud Function propia: genera el PDF en base64 y lo envía adjunto por correo desde el servidor.
-    try {
-      const docPdf = generarFacturaPDF(f);
-      const pdfBase64 = docPdf.output("datauristring").split(",")[1];
-      const enviarFacturaCorreo = httpsCallable(functions, "enviarFacturaCorreo");
-      await enviarFacturaCorreo({
-        to: cliente.correo,
-        nombreCliente: cliente.nombre || "",
-        numeroFactura: numeroTexto,
-        monto: money(f.monto),
-        fecha: f.fecha || "",
-        tallerNombre: DATOS_TALLER.nombre,
-        pdfBase64,
-      });
-      await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
-      return;
-    } catch (err) {
-      console.error("Error al enviar por la Cloud Function (¿está desplegada?):", err);
-      // Si la función no está desplegada o falla, sigue con las siguientes opciones en vez de detenerse aquí.
-    }
-
-    // 2) EmailJS con el PDF adjunto.
+    // 1) EmailJS con el PDF adjunto.
     if (emailjsConfigurado) {
       try {
         await enviarFacturaEmailJSConAdjunto(f, cliente, numeroTexto);
@@ -810,7 +787,7 @@ export default function App() {
         console.error("Error al enviar con adjunto vía EmailJS:", err);
       }
 
-      // 3) EmailJS sin adjunto (si el intento con adjunto falló, al menos llega el aviso por texto).
+      // 2) EmailJS sin adjunto (si el intento con adjunto falló, al menos llega el aviso por texto).
       try {
         await emailjs.send(
           EMAILJS_SERVICE_ID,
@@ -832,7 +809,7 @@ export default function App() {
       }
     }
 
-    // 4) Respaldo manual: descarga el PDF y abre el correo ya redactado para adjuntarlo.
+    // 3) Respaldo manual: descarga el PDF y abre el correo ya redactado para adjuntarlo.
     descargarFacturaPDF(f);
     const asunto = encodeURIComponent(`Factura ${numeroTexto} - ${DATOS_TALLER.nombre}`);
     const cuerpo = encodeURIComponent(
