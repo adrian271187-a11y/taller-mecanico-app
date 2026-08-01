@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { db, auth } from "./firebase";
+import { db, auth, functions } from "./firebase";
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc,
 } from "firebase/firestore";
@@ -9,6 +9,7 @@ import {
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import emailjs from "@emailjs/browser";
+import { httpsCallable } from "firebase/functions";
 import { DEJAVU_SANS_REGULAR_BASE64 } from "./fonts_dejavu";
 import {
   Wrench, Users, Car, Calendar, Package, Truck, Receipt,
@@ -478,13 +479,17 @@ export default function App() {
   const [showFacturaModal, setShowFacturaModal] = useState(false);
   const [facturaForm, setFacturaForm] = useState({ ordenId: "", monto: "", estadoEnvio: "pendiente" });
 
-  // Datos del taller que aparecen en el encabezado de la factura (edítalos con los datos reales del negocio)
+  // Datos del taller que aparecen en el encabezado de la factura (edítalos con los datos reales del negocio).
+  // "correo" también se usa como remitente al enviar por MailerSend, por eso debe ser una dirección
+  // de un dominio verificado ahí — por ahora usa el dominio de prueba de MailerSend (mientras no
+  // verifiques tu propio dominio), así que también sale así en el PDF. Cuando verifiques tu dominio
+  // real (ej. tutaller.com), cambia esto a algo como "facturas@tutaller.com".
   const DATOS_TALLER = {
     nombre: "Taller Mecánico",
     cedulaJuridica: "3-101-000000",
     direccion: "San José, Costa Rica",
     telefono: "8888-1234",
-    correo: "contacto@tallermecanico.com",
+    correo: "facturas@test-dnvo4d9vymrg5r86.mlsender.net",
   };
 
   // Configuración de EmailJS para el envío automático de la factura por correo.
@@ -718,55 +723,11 @@ export default function App() {
   }
   async function deleteFactura(id) { await deleteDoc(doc(db, "facturas", id)); }
 
-  // Envía la factura con EmailJS incluyendo el PDF como adjunto real, usando emailjs.sendForm()
-  // con un <form> oculto y un <input type="file"> simulado (truco con DataTransfer). Esto funciona
-  // en el plan gratuito de EmailJS porque usa el mismo mecanismo que un formulario HTML normal con
-  // adjunto — a diferencia de mandar el adjunto "a mano" por la API, que sí requiere plan de pago.
-  // Para que funcione, en el Template de EmailJS debes configurar el campo "Attachment" apuntando
-  // al input llamado "attachment" (ver instrucciones en el README).
-  async function enviarFacturaEmailJSConAdjunto(f, cliente, numeroTexto) {
-    const docPdf = generarFacturaPDF(f);
-    const blobPdf = docPdf.output("blob");
-    const archivoPdf = new File([blobPdf], `Factura-${numeroTexto}.pdf`, { type: "application/pdf" });
-
-    const form = document.createElement("form");
-    form.style.display = "none";
-
-    const campos = {
-      to_email: cliente.correo,
-      to_name: cliente.nombre || "",
-      numero_factura: numeroTexto,
-      monto: money(f.monto),
-      fecha: f.fecha || "",
-      taller_nombre: DATOS_TALLER.nombre,
-    };
-    Object.entries(campos).forEach(([nombre, valor]) => {
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = nombre;
-      input.value = valor;
-      form.appendChild(input);
-    });
-
-    const inputArchivo = document.createElement("input");
-    inputArchivo.type = "file";
-    inputArchivo.name = "attachment";
-    const transferencia = new DataTransfer();
-    transferencia.items.add(archivoPdf);
-    inputArchivo.files = transferencia.files;
-    form.appendChild(inputArchivo);
-
-    document.body.appendChild(form);
-    try {
-      await emailjs.sendForm(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, form, EMAILJS_PUBLIC_KEY);
-    } finally {
-      document.body.removeChild(form);
-    }
-  }
-
   // Envío por correo, en orden de preferencia:
-  // 1) EmailJS con adjunto (sendForm).
-  // 2) EmailJS solo texto (sin adjunto), como respaldo si el adjunto falla.
+  // 1) Cloud Function propia usando MailerSend — envío 100% automático con el PDF ya adjunto
+  //    (a diferencia de EmailJS, MailerSend sí soporta adjuntos en su plan gratuito).
+  // 2) EmailJS solo texto (sin adjunto, ya que el adjunto está bloqueado en el plan de EmailJS
+  //    salvo que pagues su plan) — al menos avisa al cliente si la Cloud Function no está lista.
   // 3) Respaldo manual — descarga el PDF y abre un borrador de correo para adjuntarlo a mano.
   async function marcarEnviada(f) {
     const cliente = clientes.find((c) => c.id === f.clienteId);
@@ -778,17 +739,31 @@ export default function App() {
       return;
     }
 
-    // 1) EmailJS con el PDF adjunto.
-    if (emailjsConfigurado) {
-      try {
-        await enviarFacturaEmailJSConAdjunto(f, cliente, numeroTexto);
-        await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
-        return;
-      } catch (err) {
-        console.error("Error al enviar con adjunto vía EmailJS:", err);
-      }
+    // 1) Cloud Function propia (MailerSend): genera el PDF en base64 y lo envía adjunto desde el servidor.
+    try {
+      const docPdf = generarFacturaPDF(f);
+      const pdfBase64 = docPdf.output("datauristring").split(",")[1];
+      const enviarFacturaCorreo = httpsCallable(functions, "enviarFacturaCorreo");
+      await enviarFacturaCorreo({
+        to: cliente.correo,
+        nombreCliente: cliente.nombre || "",
+        numeroFactura: numeroTexto,
+        monto: money(f.monto),
+        fecha: f.fecha || "",
+        tallerNombre: DATOS_TALLER.nombre,
+        remitenteCorreo: DATOS_TALLER.correo,
+        remitenteNombre: DATOS_TALLER.nombre,
+        pdfBase64,
+      });
+      await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
+      return;
+    } catch (err) {
+      console.error("Error al enviar por la Cloud Function (¿está desplegada y con el dominio verificado en MailerSend?):", err);
+      // Si la función no está lista o falla, sigue con las siguientes opciones en vez de detenerse aquí.
+    }
 
-      // 2) EmailJS sin adjunto (si el intento con adjunto falló, al menos llega el aviso por texto).
+    // 2) EmailJS solo texto (sin adjunto — bloqueado en el plan gratuito de EmailJS).
+    if (emailjsConfigurado) {
       try {
         await emailjs.send(
           EMAILJS_SERVICE_ID,

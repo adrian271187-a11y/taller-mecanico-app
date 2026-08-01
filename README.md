@@ -66,19 +66,52 @@ Los datos del taller que aparecen en el encabezado (nombre, cédula jurídica, d
 
 **Importante:** este PDF es un comprobante interno del taller (recibo/factura de servicio), no una factura electrónica autorizada por el Ministerio de Hacienda. Si necesitas facturación electrónica oficial en Costa Rica, se requiere integrarse con un proveedor autorizado (ATV/Hacienda), lo cual es un desarrollo aparte.
 
-**Envío automático por correo (EmailJS):** el botón "Enviar por correo" ya está conectado para enviar el correo automáticamente al cliente, con el PDF adjunto, sin abrir ninguna ventana ni pedirte adjuntar nada a mano. Para activarlo:
+**Envío 100% automático con PDF adjunto (Cloud Function + MailerSend):** ya está implementado en `functions/index.js`. Cuando le das clic a "Enviar por correo", la app intenta primero esta función — si está desplegada y MailerSend configurado, el cliente recibe el correo con el PDF ya adjunto, sin abrir ninguna ventana ni pedirte hacer nada más. Se eligió MailerSend (en vez de EmailJS) porque su plan gratuito sí soporta adjuntos como función normal — en EmailJS los adjuntos están bloqueados detrás de un plan de pago, sin importar cómo se le mande el archivo desde el código.
+
+**Cómo desplegarlo:**
+
+1. **Activa el plan Blaze** (pago por uso) en tu proyecto de Firebase — es obligatorio para que las Cloud Functions puedan conectarse a internet. Tiene una capa gratuita amplia; para el volumen de un taller normalmente no genera cobro, pero sí pide una tarjeta asociada. Se activa en Firebase Console → ⚙️ (Configuración del proyecto) → Uso y facturación → Modificar plan.
+
+2. **Crea una cuenta gratuita en [mailersend.com](https://www.mailersend.com)** y verifica un dominio de correo:
+   - Ve a **Domains** → agrega tu dominio (por ejemplo `tutaller.com`)
+   - MailerSend te va a pedir agregar unos registros DNS (SPF, DKIM) — esto se hace donde compraste el dominio (Namecheap, GoDaddy, etc.)
+   - Sin un dominio propio verificado, MailerSend solo deja enviar de prueba a tu propio correo — si no tienes dominio, dime y vemos alternativas (usar un dominio que ya tengas, o un subdominio gratuito)
+   - Una vez verificado, en `src/App.jsx` cambia `DATOS_TALLER.correo` para que sea una dirección de ese dominio verificado (por ejemplo `facturas@tutaller.com`), ya que MailerSend solo deja enviar **desde** un dominio verificado
+
+3. **Genera tu API Key** en MailerSend: **Integrations** → **API tokens** → crea uno nuevo con permiso de envío ("Full access" o al menos "Email send")
+
+4. **En la terminal**, dentro de la carpeta del proyecto (donde está `firebase.json`):
+```
+firebase login
+firebase use taller-automotriz-ab5ca
+cd functions
+npm install
+cd ..
+```
+
+5. **Guarda la API Key como "secret"** (no queda visible en el código):
+```
+firebase functions:secrets:set MAILERSEND_API_KEY
+```
+Te va a pedir el valor — pega ahí el API token que generaste en MailerSend.
+
+6. **Despliega la función:**
+```
+firebase deploy --only functions
+```
+
+Después de esto, el botón "Enviar por correo" ya envía la factura automáticamente con el PDF adjunto. Puedes ver los registros con `cd functions && npm run logs` si algo falla (por ejemplo, si MailerSend rechaza el envío por un dominio sin verificar, ahí vas a ver el detalle exacto).
+
+**Respaldo automático si algo falla:** si la Cloud Function no está desplegada, o falla por cualquier motivo, el sistema cae automáticamente a EmailJS (solo texto, sin adjunto, si lo configuraste) y, si eso también falla, al respaldo manual (descarga el PDF y abre un borrador de correo para adjuntarlo a mano) — así nunca se queda sin enviar nada.
+
+**Sobre EmailJS (opcional, solo como respaldo de texto):** si quieres mantenerlo como aviso de texto (sin PDF) mientras configuras MailerSend, sigue estos pasos:
 1. Crea una cuenta gratuita en [emailjs.com](https://www.emailjs.com)
 2. Conecta un "Service" (por ejemplo tu Gmail)
 3. Crea un "Template" con estas variables: `{{to_email}}` `{{to_name}}` `{{numero_factura}}` `{{monto}}` `{{fecha}}` `{{taller_nombre}}` — recuerda poner `{{to_email}}` en el campo "To Email" de la configuración de la plantilla (no en el cuerpo del mensaje), o el correo no le va a llegar a nadie
-4. **Para que el PDF vaya adjunto:** dentro del editor de la plantilla, busca la pestaña/sección **"Attachments"** (a veces aparece como un ícono de clip 📎) y agrega un adjunto que apunte al campo `attachment` — así es como referencia el archivo que la app manda en un `<input type="file" name="attachment">` oculto
-5. Ve a tu ícono de cuenta → **"Account"** → copia tu **Public Key**
-6. En `src/App.jsx`, busca las constantes `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID` y `EMAILJS_PUBLIC_KEY`, y reemplázalas con los valores que te dio EmailJS
+4. Ve a tu ícono de cuenta → **"Account"** → copia tu **Public Key**
+5. En `src/App.jsx`, busca las constantes `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID` y `EMAILJS_PUBLIC_KEY`, y reemplázalas con los valores que te dio EmailJS
 
-Mientras esas 3 constantes digan `"TU_..."`, el sistema usa automáticamente un respaldo manual (descarga el PDF y abre un borrador de correo para adjuntarlo) en vez de fallar en silencio — así que la app funciona igual antes y después de configurar EmailJS.
-
-Este método de adjuntar el PDF (formulario oculto con un archivo simulado) funciona en el plan gratuito de EmailJS porque usa el mismo mecanismo que un formulario HTML normal — a diferencia de mandar el adjunto directamente por su API, que sí requiere plan de pago.
-
-El PDF se genera con compresión activada y con una fuente recortada al mínimo (solo los caracteres necesarios) para quedar bien por debajo del límite de 50KB que EmailJS impone en su plan gratuito para los datos del formulario. Si en algún momento una factura con muchos ítems se acerca a ese límite y el envío con adjunto falla, el sistema cae automáticamente al envío solo de texto (sin adjunto) y, si eso también falla, al respaldo manual (descarga el PDF y abre un borrador de correo para adjuntarlo a mano) — así nunca se queda sin enviar nada.
+Mientras esas 3 constantes digan `"TU_..."`, ese paso simplemente se salta y el sistema usa el respaldo manual — así que la app funciona igual la hayas configurado o no.
 
 ## Pendiente para siguientes pasos (opcional)
 - Fotos en la revisión de entrada/salida (Firebase Storage)
