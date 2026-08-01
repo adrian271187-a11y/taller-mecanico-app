@@ -228,6 +228,102 @@ function dibujarInsigniaLogo(docPdf, cx, cy, radio, colorRGB) {
   dibujarEngranaje(docPdf, cx, cy, radio * 0.5, 8, 1, [255, 255, 255]);
 }
 
+// Engranaje solo de contorno (sin relleno), para usarlo como marca de agua muy sutil
+// cuando cae encima o cerca de texto (por ejemplo Términos y condiciones / Información de pago).
+function dibujarEngranajeContorno(docPdf, cx, cy, radio, dientes, opacidad, colorRGB = [180, 180, 180]) {
+  docPdf.saveGraphicsState();
+  docPdf.setGState(new docPdf.GState({ opacity: opacidad }));
+  docPdf.setDrawColor(...colorRGB);
+  docPdf.setLineWidth(0.4);
+  docPdf.circle(cx, cy, radio, "S");
+  docPdf.circle(cx, cy, radio * 0.5, "S");
+  const anchoDiente = radio * 0.24;
+  const altoDiente = radio * 0.26;
+  for (let i = 0; i < dientes; i++) {
+    const angulo = (i / dientes) * Math.PI * 2;
+    const dist = radio + altoDiente / 2;
+    const px = cx + Math.cos(angulo) * dist;
+    const py = cy + Math.sin(angulo) * dist;
+    dibujarRectRotado(docPdf, px, py, anchoDiente, altoDiente, (angulo * 180) / Math.PI, "S");
+  }
+  docPdf.restoreGraphicsState();
+}
+
+// ---- Helpers de geometría para dibujar formas rotadas (usados por la llave y el desarmador) ----
+function rotarVector(dx, dy, anguloRad) {
+  const c = Math.cos(anguloRad), s = Math.sin(anguloRad);
+  return [dx * c - dy * s, dy * c + dx * s];
+}
+function dibujarPoligonoRotado(docPdf, cx, cy, puntosLocales, anguloRad, estilo) {
+  const puntos = puntosLocales.map(([dx, dy]) => {
+    const [rx, ry] = rotarVector(dx, dy, anguloRad);
+    return [cx + rx, cy + ry];
+  });
+  const segmentos = puntos.slice(1).map((p, i) => [p[0] - puntos[i][0], p[1] - puntos[i][1]]);
+  segmentos.push([puntos[0][0] - puntos[puntos.length - 1][0], puntos[0][1] - puntos[puntos.length - 1][1]]);
+  docPdf.lines(segmentos, puntos[0][0], puntos[0][1], [1, 1], estilo, true);
+}
+function dibujarRectRotado(docPdf, cx, cy, w, h, anguloGrados, estilo) {
+  const angulo = (anguloGrados * Math.PI) / 180;
+  const hw = w / 2, hh = h / 2;
+  dibujarPoligonoRotado(docPdf, cx, cy, [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]], angulo, estilo);
+}
+
+// Dibuja una llave inglesa estilizada (mango + cabeza con hueco hexagonal), rotada al ángulo dado
+function dibujarLlaveInglesa(docPdf, cx, cy, largo, anguloGrados, colorRGB, opacidad = 1) {
+  docPdf.saveGraphicsState();
+  docPdf.setGState(new docPdf.GState({ opacity: opacidad }));
+  const angulo = (anguloGrados * Math.PI) / 180;
+  const dx = Math.cos(angulo), dy = Math.sin(angulo);
+  const grosorMango = largo * 0.11;
+
+  docPdf.setFillColor(...colorRGB);
+  dibujarRectRotado(docPdf, cx, cy, largo * 0.7, grosorMango, anguloGrados, "F");
+  docPdf.circle(cx - dx * (largo * 0.35), cy - dy * (largo * 0.35), grosorMango / 2, "F");
+  docPdf.circle(cx + dx * (largo * 0.35), cy + dy * (largo * 0.35), grosorMango / 2, "F");
+
+  // Cabeza: círculo grande con hueco hexagonal (vista de llave de tuercas)
+  const headX = cx + dx * (largo * 0.5);
+  const headY = cy + dy * (largo * 0.5);
+  const radioCabeza = largo * 0.17;
+  docPdf.circle(headX, headY, radioCabeza, "F");
+  docPdf.setFillColor(255, 255, 255);
+  const hexPuntos = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    hexPuntos.push([Math.cos(a) * radioCabeza * 0.45, Math.sin(a) * radioCabeza * 0.45]);
+  }
+  dibujarPoligonoRotado(docPdf, headX, headY, hexPuntos, 0, "F");
+
+  // Extremo opuesto: punta redondeada más angosta
+  docPdf.setFillColor(...colorRGB);
+  const colaX = cx - dx * (largo * 0.42);
+  const colaY = cy - dy * (largo * 0.42);
+  docPdf.circle(colaX, colaY, grosorMango * 0.75, "F");
+
+  docPdf.restoreGraphicsState();
+}
+
+// Dibuja un desarmador estilizado (vástago + punta + mango de color), rotado al ángulo dado
+function dibujarDesarmador(docPdf, cx, cy, largo, anguloGrados, colorMango, opacidad = 1) {
+  docPdf.saveGraphicsState();
+  docPdf.setGState(new docPdf.GState({ opacity: opacidad }));
+  const angulo = (anguloGrados * Math.PI) / 180;
+  const dx = Math.cos(angulo), dy = Math.sin(angulo);
+
+  docPdf.setFillColor(90, 92, 96);
+  dibujarRectRotado(docPdf, cx - dx * largo * 0.1, cy - dy * largo * 0.1, largo * 0.55, largo * 0.05, anguloGrados, "F");
+
+  docPdf.setFillColor(35, 35, 38);
+  dibujarRectRotado(docPdf, cx - dx * largo * 0.4, cy - dy * largo * 0.4, largo * 0.08, largo * 0.09, anguloGrados, "F");
+
+  docPdf.setFillColor(...colorMango);
+  dibujarRectRotado(docPdf, cx + dx * largo * 0.3, cy + dy * largo * 0.3, largo * 0.42, largo * 0.16, anguloGrados, "F");
+  docPdf.circle(cx + dx * largo * 0.5, cy + dy * largo * 0.5, largo * 0.08, "F");
+
+  docPdf.restoreGraphicsState();
+}
+
 export default function App() {
   const [view, setView] = useState("dashboard");
   const [user, setUser] = useState(undefined); // undefined = cargando, null = sin sesión
@@ -595,8 +691,6 @@ export default function App() {
     dibujarFranjasDiagonales(docPdf, 14, 10, 62, 14, OSCURO_RGB);
     dibujarEngranaje(docPdf, 150, 20, 9, 9, 0.55, [200, 200, 200]);
     dibujarEngranaje(docPdf, 197, 11, 6, 8, 0.55, [150, 150, 150]);
-    dibujarEngranaje(docPdf, 178, 260, 11, 9, 0.85, [60, 60, 60]);
-    dibujarEngranaje(docPdf, 20, 258, 9, 8, 0.15, ACCENT_RGB);
     dibujarEngranaje(docPdf, 160, 165, 40, 12, 0.045, [150, 150, 150]); // marca de agua central
 
     // ---- Título ----
@@ -658,6 +752,13 @@ export default function App() {
     // ---- Términos y condiciones + Información de pago (izquierda) ----
     const finalY = docPdf.lastAutoTable.finalY + 12;
 
+    // Engranajes de solo contorno, muy sutiles, detrás de este bloque de texto — al ir "mezclados"
+    // con el contenido van casi invisibles (marca de agua), a diferencia de los engranajes sólidos
+    // que están en zonas libres sin texto encima.
+    dibujarEngranajeContorno(docPdf, 82, finalY - 3, 5, 8, 0.16, [190, 190, 190]);
+    dibujarEngranajeContorno(docPdf, 18, finalY + 16, 4.5, 7, 0.14, ACCENT_RGB);
+    dibujarEngranajeContorno(docPdf, 90, finalY + 24, 4, 7, 0.12, [190, 190, 190]);
+
     docPdf.setFont(PDF_FONT, "bold");
     docPdf.setFontSize(10);
     docPdf.setTextColor(20, 20, 20);
@@ -709,6 +810,13 @@ export default function App() {
 
     // ---- Pie de página ----
     const pageHeight = docPdf.internal.pageSize.getHeight();
+
+    // Herramientas decorativas (llave + desarmador), en la zona libre sin texto encima —
+    // por eso van sólidas y bien visibles, a diferencia de los engranajes de contorno de arriba.
+    dibujarEngranaje(docPdf, 175, pageHeight - 40, 13, 9, 0.12, [130, 130, 130]);
+    dibujarDesarmador(docPdf, 158, pageHeight - 47, 34, -28, ACCENT_RGB, 0.95);
+    dibujarLlaveInglesa(docPdf, 178, pageHeight - 35, 32, -28, OSCURO_RGB, 0.95);
+
     docPdf.setDrawColor(230, 230, 230);
     docPdf.line(14, pageHeight - 18, 196, pageHeight - 18);
     docPdf.setFont(PDF_FONT, "normal");
