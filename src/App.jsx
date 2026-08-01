@@ -153,7 +153,9 @@ function PageHeader({ title, subtitle, action }) {
 
 function money(n) {
   const v = Number(n) || 0;
-  return "₡" + v.toLocaleString("es-CR", { maximumFractionDigits: 0 });
+  // toLocaleString("es-CR") separa los miles con un espacio "duro" (U+00A0) que puede no existir
+  // en fuentes recortadas (como la del PDF); lo cambiamos por un espacio normal para evitar problemas.
+  return "₡" + v.toLocaleString("es-CR", { maximumFractionDigits: 0 }).replace(/\u00A0/g, " ");
 }
 
 const PDF_FONT = "DejaVuSans";
