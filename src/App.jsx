@@ -9,7 +9,7 @@ import {
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import emailjs from "@emailjs/browser";
-import { DEJAVU_SANS_REGULAR_BASE64, DEJAVU_SANS_BOLD_BASE64 } from "./fonts_dejavu";
+import { DEJAVU_SANS_REGULAR_BASE64 } from "./fonts_dejavu";
 import {
   Wrench, Users, Car, Calendar, Package, Truck, Receipt,
   BarChart3, ClipboardCheck, Plus, X, Search, Phone, Mail,
@@ -159,11 +159,12 @@ const PDF_FONT = "DejaVuSans";
 
 // Registra en el documento jsPDF la fuente que sí incluye el símbolo ₡ y los acentos en español
 // (las fuentes estándar de PDF como Helvetica no tienen esos glifos y los muestran como "¡").
+// Se usa un único archivo de fuente (sin negrita real) registrado tanto para "normal" como para
+// "bold", para mantener el PDF lo más liviano posible (clave para el límite de adjuntos de EmailJS).
 function registrarFuentePDF(docPdf) {
   docPdf.addFileToVFS("DejaVuSans.ttf", DEJAVU_SANS_REGULAR_BASE64);
   docPdf.addFont("DejaVuSans.ttf", PDF_FONT, "normal");
-  docPdf.addFileToVFS("DejaVuSans-Bold.ttf", DEJAVU_SANS_BOLD_BASE64);
-  docPdf.addFont("DejaVuSans-Bold.ttf", PDF_FONT, "bold");
+  docPdf.addFont("DejaVuSans.ttf", PDF_FONT, "bold");
   docPdf.setFont(PDF_FONT, "normal");
 }
 
