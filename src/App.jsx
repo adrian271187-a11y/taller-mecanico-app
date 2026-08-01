@@ -35,6 +35,33 @@ const COLORS = {
   accentBlue: "#4A90C2", success: "#4CAF6D", danger: "#D8564A",
 };
 
+// Imagen de fondo por módulo (una por cada vista del panel + login)
+const BACKGROUNDS = {
+  login: "/backgrounds/login.jpg",
+  dashboard: "/backgrounds/dashboard.jpg",
+  clientes: "/backgrounds/clientes.jpg",
+  vehiculos: "/backgrounds/vehiculos.jpg",
+  agenda: "/backgrounds/agenda.jpg",
+  ordenes: "/backgrounds/ordenes.jpg",
+  revisiones: "/backgrounds/revisiones.jpg",
+  inventario: "/backgrounds/inventario.jpg",
+  proveedores: "/backgrounds/proveedores.jpg",
+  facturacion: "/backgrounds/facturacion.jpg",
+  estadisticas: "/backgrounds/estadisticas.jpg",
+};
+
+// Overlay oscuro para que el contenido siga siendo legible sobre la foto
+function moduleBackgroundStyle(key) {
+  const img = BACKGROUNDS[key];
+  if (!img) return {};
+  return {
+    backgroundImage: `linear-gradient(rgba(14,17,20,0.90), rgba(14,17,20,0.94)), url(${img})`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+  };
+}
+
 function TicketBadge({ n }) {
   return (
     <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: COLORS.textSecondary, letterSpacing: "0.05em" }}>
@@ -388,7 +415,7 @@ export default function App() {
       )}
 
       {user === null && (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", ...moduleBackgroundStyle("login") }}>
           <form onSubmit={handleLogin} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 28, width: 340 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
               <div style={{ width: 32, height: 32, borderRadius: 7, background: COLORS.accent, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -439,7 +466,7 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ flex: 1, padding: "22px 28px", overflow: "auto" }}>
+      <div style={{ flex: 1, padding: "22px 28px", overflow: "auto", ...moduleBackgroundStyle(view) }}>
 
         {view === "dashboard" && (
           <div>
