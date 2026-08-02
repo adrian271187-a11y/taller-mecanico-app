@@ -15,15 +15,19 @@ import {
   Wrench, Users, Car, Calendar, Package, Truck, Receipt,
   BarChart3, ClipboardCheck, Plus, X, Search, Phone, Mail,
   ChevronRight, Trash2, Edit2, Send, AlertTriangle, LogOut, Lock,
-  FileText, Printer,
+  FileText, Printer, History,
 } from "lucide-react";
 
-// Cuentas del panel (no requieren correo real). El rol "mecanico" tiene acceso de solo
-// lectura a la mayoría de módulos; para crear/editar/eliminar algo se le pide autorización
+// Cuentas del panel (no requieren correo real). El rol "mecanico" puede crear registros
+// (clientes, vehículos, citas, órdenes, revisiones, proveedores, repuestos, facturas), pero
+// no puede editar ni eliminar lo ya creado, ni editar/eliminar una factura, sin autorización
 // del usuario admin (ver conAutorizacion más abajo).
 const CUENTAS = [
   { usuario: "TallerAdmin", clave: "Taller2026$", rol: "admin" },
   { usuario: "Mecanico", clave: "Mecanico2026$", rol: "mecanico" },
+  { usuario: "Meca1", clave: "Meca$", rol: "mecanico" },
+  { usuario: "Meca2", clave: "Meca$", rol: "mecanico" },
+  { usuario: "Meca3", clave: "Meca$", rol: "mecanico" },
 ];
 const CUENTA_ADMIN = CUENTAS.find((c) => c.rol === "admin");
 
@@ -38,6 +42,7 @@ const NAV = [
   { id: "proveedores", label: "Proveedores", icon: Truck },
   { id: "facturacion", label: "Facturación", icon: Receipt },
   { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
+  { id: "historial", label: "Historial", icon: History, soloAdmin: true },
 ];
 
 const COLORS = {
@@ -204,6 +209,7 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [user, setUser] = useState(undefined); // undefined = cargando, null = sin sesión
   const [rol, setRol] = useState(null); // "admin" | "mecanico"
+  const [usuarioActual, setUsuarioActual] = useState(null); // nombre de usuario exacto (TallerAdmin, Meca1, etc.)
   const [loginUsuario, setLoginUsuario] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -214,12 +220,30 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, (u) => {
       // Solo se considera "con sesión" si además pasó la validación local
       const rolGuardado = localStorage.getItem("taller_rol");
+      const usuarioGuardado = localStorage.getItem("taller_usuario");
       const sesionLocal = localStorage.getItem("taller_admin_session") === "1" && !!rolGuardado;
       setUser(u && sesionLocal ? u : null);
       setRol(u && sesionLocal ? rolGuardado : null);
+      setUsuarioActual(u && sesionLocal ? usuarioGuardado : null);
     });
     return () => unsub();
   }, []);
+
+  // Registra una acción en el historial (solo el admin puede consultarlo después)
+  async function registrarActividad(accion, modulo, detalle) {
+    try {
+      await addDoc(collection(db, "historial"), {
+        usuario: usuarioActual || "desconocido",
+        rol: rol || "",
+        accion,
+        modulo,
+        detalle: detalle || "",
+        fecha: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Error al registrar actividad:", err);
+    }
+  }
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -233,8 +257,13 @@ export default function App() {
       await signInAnonymously(auth);
       localStorage.setItem("taller_admin_session", "1");
       localStorage.setItem("taller_rol", cuenta.rol);
+      localStorage.setItem("taller_usuario", cuenta.usuario);
       setUser(auth.currentUser);
       setRol(cuenta.rol);
+      setUsuarioActual(cuenta.usuario);
+      addDoc(collection(db, "historial"), {
+        usuario: cuenta.usuario, rol: cuenta.rol, accion: "inicio de sesión", modulo: "Sistema", detalle: "", fecha: new Date().toISOString(),
+      }).catch((err) => console.error("Error al registrar inicio de sesión:", err));
     } catch (err) {
       setLoginError("No se pudo iniciar sesión. Intenta de nuevo.");
     }
@@ -242,9 +271,11 @@ export default function App() {
   async function handleLogout() {
     localStorage.removeItem("taller_admin_session");
     localStorage.removeItem("taller_rol");
+    localStorage.removeItem("taller_usuario");
     await signOut(auth);
     setUser(null);
     setRol(null);
+    setUsuarioActual(null);
   }
 
   // ---------- Autorización de administrador (para que un mecánico pueda hacer algo restringido) ----------
@@ -291,6 +322,7 @@ export default function App() {
   const [ordenes, setOrdenes] = useState([]);
   const [revisiones, setRevisiones] = useState([]);
   const [facturas, setFacturas] = useState([]);
+  const [historial, setHistorial] = useState([]);
 
   useEffect(() => {
     if (!user) return;
@@ -307,6 +339,13 @@ export default function App() {
     ];
     return () => subs.forEach((u) => u());
   }, [user]);
+
+  // El historial de actividad solo se consulta si el usuario conectado es admin
+  useEffect(() => {
+    if (!user || !esAdmin) return;
+    const unsub = onSnapshot(collection(db, "historial"), (s) => setHistorial(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => unsub();
+  }, [user, esAdmin]);
 
   // ---------- Clientes ----------
   const [search, setSearch] = useState("");
@@ -327,8 +366,10 @@ export default function App() {
     if (!clienteForm.nombre.trim()) return;
     setSaveError("");
     try {
+      const esNuevo = !editingCliente;
       if (editingCliente) await updateDoc(doc(db, "clientes", editingCliente), clienteForm);
       else await addDoc(collection(db, "clientes"), clienteForm);
+      registrarActividad(esNuevo ? "crear" : "editar", "Clientes", clienteForm.nombre);
       setShowClienteModal(false);
       setEditingCliente(null);
       setClienteForm({ nombre: "", telefono: "", correo: "" });
@@ -338,8 +379,10 @@ export default function App() {
     }
   }
   async function deleteCliente(id) {
+    const c = clientes.find((x) => x.id === id);
     await deleteDoc(doc(db, "clientes", id));
     await Promise.all(vehiculos.filter((v) => v.clienteId === id).map((v) => deleteDoc(doc(db, "vehiculos", v.id))));
+    registrarActividad("eliminar", "Clientes", c?.nombre || id);
   }
 
   // ---------- Vehículos ----------
@@ -353,8 +396,10 @@ export default function App() {
     if (!vehiculoForm.placa.trim() || !vehiculoForm.clienteId) return;
     setSaveError("");
     try {
+      const esNuevo = !editingVehiculo;
       if (editingVehiculo) await updateDoc(doc(db, "vehiculos", editingVehiculo), vehiculoForm);
       else await addDoc(collection(db, "vehiculos"), vehiculoForm);
+      registrarActividad(esNuevo ? "crear" : "editar", "Vehículos", vehiculoForm.placa);
       setShowVehiculoModal(false);
       setEditingVehiculo(null);
       setVehiculoForm({ clienteId: "", placa: "", marca: "", modelo: "", anio: "", km: "" });
@@ -363,7 +408,11 @@ export default function App() {
       setSaveError(err.message || "No se pudo guardar el vehículo.");
     }
   }
-  async function deleteVehiculo(id) { await deleteDoc(doc(db, "vehiculos", id)); }
+  async function deleteVehiculo(id) {
+    const v = vehiculos.find((x) => x.id === id);
+    await deleteDoc(doc(db, "vehiculos", id));
+    registrarActividad("eliminar", "Vehículos", v?.placa || id);
+  }
 
   // ---------- Agenda ----------
   const [showCitaModal, setShowCitaModal] = useState(false);
@@ -378,8 +427,10 @@ export default function App() {
     if (!citaForm.clienteId || !citaForm.fecha || !citaForm.hora) return;
     setSaveError("");
     try {
+      const esNuevo = !editingCita;
       if (editingCita) await updateDoc(doc(db, "citas", editingCita), citaForm);
       else await addDoc(collection(db, "citas"), citaForm);
+      registrarActividad(esNuevo ? "crear" : "editar", "Agenda", `${citaForm.fecha} ${citaForm.hora}`);
       setShowCitaModal(false);
       setEditingCita(null);
       setCitaForm({ clienteId: "", vehiculoId: "", fecha: "", hora: "", servicio: "", estado: "pendiente" });
@@ -388,10 +439,14 @@ export default function App() {
       setSaveError(err.message || "No se pudo guardar la cita.");
     }
   }
-  async function deleteCita(id) { await deleteDoc(doc(db, "citas", id)); }
+  async function deleteCita(id) {
+    await deleteDoc(doc(db, "citas", id));
+    registrarActividad("eliminar", "Agenda", id);
+  }
   async function toggleEstadoCita(c) {
     const siguiente = c.estado === "confirmada" ? "completada" : c.estado === "completada" ? "pendiente" : "confirmada";
     await updateDoc(doc(db, "citas", c.id), { estado: siguiente });
+    registrarActividad("editar", "Agenda", `estado → ${siguiente}`);
   }
 
   // ---------- Proveedores ----------
@@ -405,8 +460,10 @@ export default function App() {
     if (!proveedorForm.nombre.trim()) return;
     setSaveError("");
     try {
+      const esNuevo = !editingProveedor;
       if (editingProveedor) await updateDoc(doc(db, "proveedores", editingProveedor), proveedorForm);
       else await addDoc(collection(db, "proveedores"), proveedorForm);
+      registrarActividad(esNuevo ? "crear" : "editar", "Proveedores", proveedorForm.nombre);
       setShowProveedorModal(false);
       setEditingProveedor(null);
       setProveedorForm({ nombre: "", contacto: "", telefono: "", suministra: "" });
@@ -415,7 +472,11 @@ export default function App() {
       setSaveError(err.message || "No se pudo guardar el proveedor.");
     }
   }
-  async function deleteProveedor(id) { await deleteDoc(doc(db, "proveedores", id)); }
+  async function deleteProveedor(id) {
+    const p = proveedores.find((x) => x.id === id);
+    await deleteDoc(doc(db, "proveedores", id));
+    registrarActividad("eliminar", "Proveedores", p?.nombre || id);
+  }
 
   // ---------- Inventario (repuestos) ----------
   const [showRepuestoModal, setShowRepuestoModal] = useState(false);
@@ -428,9 +489,11 @@ export default function App() {
     if (!repuestoForm.nombre.trim()) return;
     setSaveError("");
     try {
+      const esNuevo = !editingRepuesto;
       const payload = { ...repuestoForm, stock: Number(repuestoForm.stock) || 0, precioCompra: Number(repuestoForm.precioCompra) || 0, precioVenta: Number(repuestoForm.precioVenta) || 0 };
       if (editingRepuesto) await updateDoc(doc(db, "repuestos", editingRepuesto), payload);
       else await addDoc(collection(db, "repuestos"), payload);
+      registrarActividad(esNuevo ? "crear" : "editar", "Inventario", repuestoForm.nombre);
       setShowRepuestoModal(false);
       setEditingRepuesto(null);
       setRepuestoForm({ nombre: "", stock: "", precioCompra: "", precioVenta: "", proveedorId: "" });
@@ -439,7 +502,11 @@ export default function App() {
       setSaveError(err.message || "No se pudo guardar el repuesto.");
     }
   }
-  async function deleteRepuesto(id) { await deleteDoc(doc(db, "repuestos", id)); }
+  async function deleteRepuesto(id) {
+    const r = repuestos.find((x) => x.id === id);
+    await deleteDoc(doc(db, "repuestos", id));
+    registrarActividad("eliminar", "Inventario", r?.nombre || id);
+  }
 
   // ---------- Catálogo de servicios ----------
   const [nuevoServicioNombre, setNuevoServicioNombre] = useState("");
@@ -497,6 +564,7 @@ export default function App() {
     if (!ordenForm.vehiculoId) return;
     setSaveError("");
     try {
+      const esNuevo = !editingOrden;
       const vehiculo = vehiculos.find((v) => v.id === ordenForm.vehiculoId);
       const payload = { ...ordenForm, clienteId: vehiculo?.clienteId || "", costoTotal: costoOrdenActual };
       if (editingOrden) {
@@ -511,6 +579,7 @@ export default function App() {
           }
         }
       }
+      registrarActividad(esNuevo ? "crear" : "editar", "Órdenes de trabajo", vehiculo?.placa || "");
       setShowOrdenModal(false);
       setEditingOrden(null);
       setOrdenForm({ vehiculoId: "", items: [], manoObra: "", estado: "abierta", fecha: "" });
@@ -519,8 +588,14 @@ export default function App() {
       setSaveError(err.message || "No se pudo guardar la orden.");
     }
   }
-  async function deleteOrden(id) { await deleteDoc(doc(db, "ordenes", id)); }
-  async function cambiarEstadoOrden(o, estado) { await updateDoc(doc(db, "ordenes", o.id), { estado }); }
+  async function deleteOrden(id) {
+    await deleteDoc(doc(db, "ordenes", id));
+    registrarActividad("eliminar", "Órdenes de trabajo", id);
+  }
+  async function cambiarEstadoOrden(o, estado) {
+    await updateDoc(doc(db, "ordenes", o.id), { estado });
+    registrarActividad("editar", "Órdenes de trabajo", `estado → ${estado}`);
+  }
 
   // ---------- Revisión E/S ----------
   const [showRevisionModal, setShowRevisionModal] = useState(false);
@@ -540,6 +615,7 @@ export default function App() {
     setSaveError("");
     try {
       await addDoc(collection(db, "revisiones"), revisionForm);
+      registrarActividad("crear", "Revisión E/S", revisionForm.tipo);
       setShowRevisionModal(false);
       setRevisionForm({ ordenId: "", tipo: "entrada", km: "", notas: "", checklist: {} });
     } catch (err) {
@@ -547,7 +623,10 @@ export default function App() {
       setSaveError(err.message || "No se pudo guardar la revisión.");
     }
   }
-  async function deleteRevision(id) { await deleteDoc(doc(db, "revisiones", id)); }
+  async function deleteRevision(id) {
+    await deleteDoc(doc(db, "revisiones", id));
+    registrarActividad("eliminar", "Revisión E/S", id);
+  }
 
   // ---------- Facturación ----------
   const [showFacturaModal, setShowFacturaModal] = useState(false);
@@ -788,6 +867,7 @@ export default function App() {
       const numero = siguienteNumeroFactura();
       const nuevaFactura = { ...facturaForm, clienteId: o?.clienteId || "", fecha: new Date().toISOString().slice(0, 10), numero };
       await addDoc(collection(db, "facturas"), nuevaFactura);
+      registrarActividad("crear", "Facturación", formatoNumeroFactura(numero));
       setShowFacturaModal(false);
       setFacturaForm({ ordenId: "", monto: "", estadoEnvio: "pendiente" });
     } catch (err) {
@@ -795,7 +875,11 @@ export default function App() {
       setSaveError(err.message || "No se pudo guardar la factura.");
     }
   }
-  async function deleteFactura(id) { await deleteDoc(doc(db, "facturas", id)); }
+  async function deleteFactura(id) {
+    const f = facturas.find((x) => x.id === id);
+    await deleteDoc(doc(db, "facturas", id));
+    registrarActividad("eliminar", "Facturación", f ? formatoNumeroFactura(f.numero) : id);
+  }
 
   // Envío por correo, en orden de preferencia:
   // 1) Cloud Function propia usando MailerSend — envío 100% automático con el PDF ya adjunto
@@ -830,6 +914,7 @@ export default function App() {
         pdfBase64,
       });
       await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
+      registrarActividad("enviar por correo", "Facturación", `${numeroTexto} → ${cliente.correo}`);
       return;
     } catch (err) {
       console.error("Error al enviar por la Cloud Function (¿está desplegada y con el dominio verificado en MailerSend?):", err);
@@ -853,6 +938,7 @@ export default function App() {
           EMAILJS_PUBLIC_KEY
         );
         await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
+        registrarActividad("enviar por correo", "Facturación", `${numeroTexto} → ${cliente.correo} (EmailJS)`);
         return;
       } catch (err) {
         console.error("Error al enviar correo con EmailJS:", err);
@@ -867,6 +953,7 @@ export default function App() {
     );
     window.open(`mailto:${cliente?.correo || ""}?subject=${asunto}&body=${cuerpo}`, "_blank");
     await updateDoc(doc(db, "facturas", f.id), { estadoEnvio: "enviada" });
+    registrarActividad("enviar por correo", "Facturación", `${numeroTexto} → ${cliente.correo} (manual)`);
   }
 
   // ---------- Estadísticas ----------
@@ -933,7 +1020,7 @@ export default function App() {
             <div style={{ fontSize: 10.5, color: COLORS.textSecondary, letterSpacing: "0.06em" }}>SISTEMA DE GESTIÓN</div>
           </div>
         </div>
-        {NAV.map((item) => {
+        {NAV.filter((item) => !item.soloAdmin || esAdmin).map((item) => {
           const Icon = item.icon;
           const active = view === item.id;
           return (
@@ -999,7 +1086,7 @@ export default function App() {
         {view === "clientes" && (
           <div>
             <PageHeader title="Clientes" subtitle={`${clientes.length} clientes registrados`}
-              action={<button onClick={conAutorizacion(openNewCliente)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo cliente</button>} />
+              action={<button onClick={openNewCliente} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo cliente</button>} />
             <div style={{ position: "relative", marginBottom: 16 }}>
               <Search size={15} style={{ position: "absolute", left: 11, top: 11, color: COLORS.textSecondary }} />
               <input placeholder="Buscar por nombre o teléfono..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, paddingLeft: 34, marginBottom: 0 }} />
@@ -1024,7 +1111,7 @@ export default function App() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <TicketBadge n={i + 1} />
-                    <button onClick={conAutorizacion(() => openNewVehiculo(c.id))} title="Agregar vehículo" style={{ ...btnGhost, marginLeft: 8 }}><Car size={14} /></button>
+                    <button onClick={() => openNewVehiculo(c.id)} title="Agregar vehículo" style={{ ...btnGhost, marginLeft: 8 }}><Car size={14} /></button>
                     <button onClick={conAutorizacion(() => openEditCliente(c))} title="Editar" style={btnGhost}><Edit2 size={14} /></button>
                     <button onClick={conAutorizacion(() => deleteCliente(c.id))} title="Eliminar" style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
                   </div>
@@ -1038,7 +1125,7 @@ export default function App() {
         {view === "vehiculos" && (
           <div>
             <PageHeader title="Vehículos" subtitle={`${vehiculos.length} vehículos registrados`}
-              action={<button onClick={conAutorizacion(() => openNewVehiculo(null))} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo vehículo</button>} />
+              action={<button onClick={() => openNewVehiculo(null)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo vehículo</button>} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
               {vehiculos.map((v, i) => {
                 const cliente = clientes.find((c) => c.id === v.clienteId);
@@ -1068,7 +1155,7 @@ export default function App() {
         {view === "agenda" && (
           <div>
             <PageHeader title="Agenda" subtitle={`${citas.length} citas registradas`}
-              action={<button onClick={conAutorizacion(openNewCita)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva cita</button>} />
+              action={<button onClick={openNewCita} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva cita</button>} />
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {citasOrdenadas.map((c) => {
                 const cliente = clientes.find((x) => x.id === c.clienteId);
@@ -1103,7 +1190,7 @@ export default function App() {
         {view === "ordenes" && (
           <div>
             <PageHeader title="Órdenes de trabajo" subtitle={`${ordenes.length} órdenes registradas`}
-              action={<button onClick={conAutorizacion(openNewOrden)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva orden</button>} />
+              action={<button onClick={openNewOrden} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva orden</button>} />
 
             <div style={{ background: COLORS.surface, border: `1px dashed ${COLORS.border}`, borderRadius: 9, padding: 14, marginBottom: 16 }}>
               <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginBottom: 10 }}>Catálogo de servicios del taller</div>
@@ -1119,7 +1206,7 @@ export default function App() {
               <div style={{ display: "flex", gap: 8 }}>
                 <input autoComplete="off" placeholder="Nombre del servicio" value={nuevoServicioNombre} onChange={(e) => setNuevoServicioNombre(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 2 }} />
                 <input autoComplete="off" placeholder="Precio" value={nuevoServicioPrecio} onChange={(e) => setNuevoServicioPrecio(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
-                <button onClick={conAutorizacion(agregarServicio)} style={{ ...btnPrimary, width: "auto", padding: "0 14px" }}>Agregar</button>
+                <button onClick={agregarServicio} style={{ ...btnPrimary, width: "auto", padding: "0 14px" }}>Agregar</button>
               </div>
             </div>
 
@@ -1164,7 +1251,7 @@ export default function App() {
         {view === "revisiones" && (
           <div>
             <PageHeader title="Revisión de entrada y salida" subtitle={`${revisiones.length} revisiones registradas`}
-              action={<button onClick={conAutorizacion(openNewRevision)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva revisión</button>} />
+              action={<button onClick={openNewRevision} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva revisión</button>} />
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {revisiones.map((r) => {
                 const o = ordenes.find((x) => x.id === r.ordenId);
@@ -1193,7 +1280,7 @@ export default function App() {
         {view === "inventario" && (
           <div>
             <PageHeader title="Inventario de repuestos" subtitle={`${repuestos.length} repuestos registrados`}
-              action={<button onClick={conAutorizacion(openNewRepuesto)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo repuesto</button>} />
+              action={<button onClick={openNewRepuesto} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo repuesto</button>} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
               {repuestos.map((r) => {
                 const proveedor = proveedores.find((p) => p.id === r.proveedorId);
@@ -1228,7 +1315,7 @@ export default function App() {
         {view === "proveedores" && (
           <div>
             <PageHeader title="Proveedores" subtitle={`${proveedores.length} proveedores registrados`}
-              action={<button onClick={conAutorizacion(openNewProveedor)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo proveedor</button>} />
+              action={<button onClick={openNewProveedor} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo proveedor</button>} />
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {proveedores.map((p) => (
                 <div key={p.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1254,7 +1341,7 @@ export default function App() {
         {view === "facturacion" && (
           <div>
             <PageHeader title="Facturación" subtitle={`${facturas.length} facturas emitidas`}
-              action={<button onClick={conAutorizacion(openNewFactura)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Generar factura</button>} />
+              action={<button onClick={openNewFactura} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Generar factura</button>} />
             {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 14, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "10px 14px" }}>{saveError}</div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {facturas.map((f, i) => {
@@ -1311,6 +1398,36 @@ export default function App() {
                 </div>
               ))}
               {stats.topServicios.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13 }}>Aún no hay suficientes datos de órdenes.</div>}
+            </div>
+          </div>
+        )}
+
+        {view === "historial" && esAdmin && (
+          <div>
+            <PageHeader title="Historial de actividad" subtitle={`${historial.length} eventos registrados · solo visible para administradores`} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[...historial].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((h) => (
+                <div key={h.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 20, background: COLORS.surfaceRaised, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11.5, fontWeight: 600, color: COLORS.accent }}>
+                      {(h.usuario || "?").slice(0, 2).toUpperCase()}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5 }}>
+                        <strong>{h.usuario}</strong>
+                        <span style={{ color: COLORS.textSecondary }}> ({h.rol === "admin" ? "admin" : "mecánico"}) — {h.accion}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {h.modulo}{h.detalle ? ` · ${h.detalle}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: COLORS.textSecondary, whiteSpace: "nowrap", flexShrink: 0 }}>
+                    {h.fecha ? new Date(h.fecha).toLocaleString("es-CR", { dateStyle: "short", timeStyle: "short" }) : ""}
+                  </div>
+                </div>
+              ))}
+              {historial.length === 0 && <div style={{ color: COLORS.textSecondary, fontSize: 13.5, padding: 20, textAlign: "center" }}>Todavía no hay actividad registrada.</div>}
             </div>
           </div>
         )}

@@ -11,7 +11,8 @@ Sistema completo conectado a Firebase (Firestore) con los siguientes módulos fu
 - **Proveedores** — contacto y qué suministran
 - **Facturación** — se genera desde una orden de trabajo, con **número consecutivo automático** (FA-0001, FA-0002...), botón para **ver/imprimir la factura en PDF** y botón de "enviar por correo" (ver sección de PDF y correo abajo)
 - **Estadísticas** — ingresos totales, órdenes completadas, servicios más solicitados
-- **Login del panel** — protegido con Firebase Authentication (correo/contraseña)
+- **Login del panel** — protegido con Firebase Authentication (correo/contraseña), con cuentas de Administrador y Mecánico (ver sección de roles más abajo)
+- **Historial de actividad** — registra quién hizo qué y cuándo (crear, editar, eliminar, enviar factura, inicio de sesión); solo el administrador puede verlo
 
 ## Cómo subirlo (mismo flujo que Kyomu Nails)
 
@@ -44,16 +45,23 @@ El panel usa cuentas locales definidas directamente en el código (`src/App.jsx`
 1. Firebase Console → **Authentication** → **Sign-in method** → activa **Anonymous**
 2. Eso es todo — no necesitas crear ningún usuario en la pestaña "Users"
 
-**Cuentas y roles:** hay dos cuentas configuradas por defecto en la constante `CUENTAS` de `src/App.jsx`:
+**Cuentas y roles:** hay 5 cuentas configuradas por defecto en la constante `CUENTAS` de `src/App.jsx`:
 
 | Usuario | Contraseña | Rol | Permisos |
 |---|---|---|---|
 | `TallerAdmin` | `Taller2026$` | Administrador | Acceso completo — puede crear, editar y eliminar en todos los módulos |
-| `Mecanico` | `Mecanico2026$` | Mecánico | Puede ver todos los módulos, pero no crear/editar/eliminar nada. En Facturación puede ver, imprimir y enviar por correo, pero no generar ni borrar facturas |
+| `Mecanico` | `Mecanico2026$` | Mecánico | Puede crear registros (clientes, vehículos, citas, órdenes, revisiones, proveedores, repuestos, facturas), pero no puede editar ni eliminar lo ya creado sin autorización del admin |
+| `Meca1` | `Meca$` | Mecánico | Igual que arriba |
+| `Meca2` | `Meca$` | Mecánico | Igual que arriba |
+| `Meca3` | `Meca$` | Mecánico | Igual que arriba |
 
-Cuando un mecánico intenta hacer algo restringido (crear un cliente, editar el inventario, generar una factura, etc.), la app le muestra un cuadro pidiendo el usuario y la contraseña del administrador — si los ingresa correctamente, la acción se ejecuta esa vez; si no, se cancela. Esto se maneja con la función `conAutorizacion(...)` que envuelve cada botón de crear/editar/eliminar.
+En Facturación, un mecánico puede **generar** una factura nueva, y libremente **ver, imprimir y enviar por correo** cualquier factura — pero **eliminarla** sí pide autorización del admin. En el resto de módulos, editar o eliminar cualquier registro (o cambiar el estado de una cita/orden) también pide esa autorización.
+
+Cuando un mecánico intenta hacer algo restringido, la app le muestra un cuadro pidiendo el usuario y la contraseña del administrador — si los ingresa correctamente, la acción se ejecuta esa vez; si no, se cancela. Esto se maneja con la función `conAutorizacion(...)` que envuelve cada botón de editar/eliminar.
 
 Para cambiar las contraseñas, agregar más cuentas, o cambiar qué puede hacer cada rol, edita el arreglo `CUENTAS` (y la lógica de `conAutorizacion` si quieres afinar permisos módulo por módulo) en `src/App.jsx` y vuelve a publicar. **Cambia las contraseñas por defecto antes de darle la app a tu equipo.**
+
+**Historial de actividad:** cada vez que alguien crea, edita, elimina, envía una factura por correo o inicia sesión, queda un registro en la colección `historial` de Firestore (usuario, rol, acción, módulo, detalle y fecha/hora). Solo aparece la pestaña "Historial" en el menú, y solo se consulta esa información, cuando el usuario conectado es Administrador — un mecánico no la ve ni la descarga desde la app. Como se explicó arriba, esta restricción es a nivel de la app (mismo modelo de seguridad que el resto del sistema), no a nivel de las reglas de Firestore.
 
 ### 5. Reglas de seguridad de Firestore
 En Firebase → Firestore Database → Reglas:
