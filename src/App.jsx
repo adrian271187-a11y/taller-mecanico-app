@@ -102,6 +102,30 @@ function TicketBadge({ n }) {
   );
 }
 
+// Rueda de carro (llanta + rin + rayos) girando — indicador de carga del sistema
+function RuedaCargando({ size = 68 }) {
+  const bandaRodadura = Array.from({ length: 18 });
+  const rayos = Array.from({ length: 5 });
+  return (
+    <svg viewBox="0 0 100 100" width={size} height={size} style={{ animation: "taller-spin 0.8s linear infinite", display: "block" }}>
+      {/* Llanta (neumático) con textura de banda de rodadura */}
+      <circle cx="50" cy="50" r="46" fill="#161616" />
+      {bandaRodadura.map((_, i) => (
+        <rect key={i} x="47.5" y="4" width="5" height="9" rx="1.5" fill="#2b2b2b" transform={`rotate(${(360 / bandaRodadura.length) * i} 50 50)`} />
+      ))}
+      {/* Rin */}
+      <circle cx="50" cy="50" r="31" fill="#e2e6ea" />
+      {rayos.map((_, i) => (
+        <rect key={i} x="47" y="21" width="6" height="29" rx="3" fill="#9aa3ab" transform={`rotate(${(360 / rayos.length) * i} 50 50)`} />
+      ))}
+      {/* Copa central */}
+      <circle cx="50" cy="50" r="10" fill="#c3c9cf" />
+      <circle cx="50" cy="50" r="10" fill="none" stroke="#8b939b" strokeWidth="1" />
+      <circle cx="50" cy="50" r="4" fill={COLORS.accent} />
+    </svg>
+  );
+}
+
 function Modal({ title, onClose, children, wide }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(10,12,14,0.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }}>
@@ -814,20 +838,7 @@ export default function App() {
     <div style={{ fontFamily: "'Inter', sans-serif", background: COLORS.bg, minHeight: "100vh", display: "flex", color: COLORS.textPrimary }}>
       {user === undefined && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, animation: "taller-fade-in 0.4s ease-out" }}>
-          <div style={{ position: "relative", width: 68, height: 68 }}>
-            <div style={{
-              position: "absolute", inset: 0, borderRadius: "50%",
-              border: `3px solid ${COLORS.border}`, borderTopColor: COLORS.accent,
-              animation: "taller-spin 0.9s linear infinite",
-            }} />
-            <div style={{
-              position: "absolute", inset: 13, borderRadius: 9, background: COLORS.accent,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              animation: "taller-pulse 1.6s ease-in-out infinite",
-            }}>
-              <Wrench size={20} color="#1C0D04" />
-            </div>
-          </div>
+          <RuedaCargando size={72} />
           <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, color: COLORS.textPrimary }}>Taller</div>
           <div style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 12.5, color: COLORS.textSecondary, letterSpacing: "0.02em" }}>
             <span>Cargando sistema</span>
