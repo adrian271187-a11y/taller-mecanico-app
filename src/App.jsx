@@ -638,7 +638,7 @@ export default function App() {
   // verifiques tu propio dominio), así que también sale así en el PDF. Cuando verifiques tu dominio
   // real (ej. tutaller.com), cambia esto a algo como "facturas@tutaller.com".
   const DATOS_TALLER = {
-    nombre: "Taller Mecánico",
+    nombre: "Taller Eléctrico Automotriz",
     cedulaJuridica: "3-101-000000",
     direccion: "San José, Costa Rica",
     telefono: "8888-1234",
@@ -974,7 +974,7 @@ export default function App() {
       {user === undefined && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, animation: "taller-fade-in 0.4s ease-out" }}>
           <RuedaCargando size={72} />
-          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, color: COLORS.textPrimary }}>Taller</div>
+          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, color: COLORS.textPrimary }}>Taller Eléctrico Automotriz</div>
           <div style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 12.5, color: COLORS.textSecondary, letterSpacing: "0.02em" }}>
             <span>Cargando sistema</span>
             <span style={{ display: "inline-flex", gap: 2 }}>
@@ -1016,7 +1016,7 @@ export default function App() {
             <Wrench size={16} color="#1C0D04" />
           </div>
           <div>
-            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 14.5, lineHeight: 1.1 }}>Taller</div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13, lineHeight: 1.15 }}>Taller Eléctrico Automotriz</div>
             <div style={{ fontSize: 10.5, color: COLORS.textSecondary, letterSpacing: "0.06em" }}>SISTEMA DE GESTIÓN</div>
           </div>
         </div>

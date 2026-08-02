@@ -1,4 +1,4 @@
-# Taller Mecánico — Sistema de gestión
+# Taller Eléctrico Automotriz — Sistema de gestión
 
 Sistema completo conectado a Firebase (Firestore) con los siguientes módulos funcionando:
 
