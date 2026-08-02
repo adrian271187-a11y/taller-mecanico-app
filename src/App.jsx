@@ -993,7 +993,7 @@ export default function App() {
               <div style={{ width: 32, height: 32, borderRadius: 7, background: COLORS.accent, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <Wrench size={17} color="#1C0D04" />
               </div>
-              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>Panel del taller</div>
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>Taller Eléctrico Automotriz</div>
             </div>
             <FieldLabel>Usuario</FieldLabel>
             <input required style={inputStyle} value={loginUsuario} onChange={(e) => setLoginUsuario(e.target.value)} placeholder="TallerAdmin" />
