@@ -813,14 +813,36 @@ export default function App() {
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", background: COLORS.bg, minHeight: "100vh", display: "flex", color: COLORS.textPrimary }}>
       {user === undefined && (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13.5, color: COLORS.textSecondary }}>
-          Cargando...
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, animation: "taller-fade-in 0.4s ease-out" }}>
+          <div style={{ position: "relative", width: 68, height: 68 }}>
+            <div style={{
+              position: "absolute", inset: 0, borderRadius: "50%",
+              border: `3px solid ${COLORS.border}`, borderTopColor: COLORS.accent,
+              animation: "taller-spin 0.9s linear infinite",
+            }} />
+            <div style={{
+              position: "absolute", inset: 13, borderRadius: 9, background: COLORS.accent,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              animation: "taller-pulse 1.6s ease-in-out infinite",
+            }}>
+              <Wrench size={20} color="#1C0D04" />
+            </div>
+          </div>
+          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, color: COLORS.textPrimary }}>Taller</div>
+          <div style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 12.5, color: COLORS.textSecondary, letterSpacing: "0.02em" }}>
+            <span>Cargando sistema</span>
+            <span style={{ display: "inline-flex", gap: 2 }}>
+              <span style={{ display: "inline-block", animation: "taller-dot 1.4s infinite" }}>.</span>
+              <span style={{ display: "inline-block", animation: "taller-dot 1.4s infinite 0.2s" }}>.</span>
+              <span style={{ display: "inline-block", animation: "taller-dot 1.4s infinite 0.4s" }}>.</span>
+            </span>
+          </div>
         </div>
       )}
 
       {user === null && (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", ...moduleBackgroundStyle("login") }}>
-          <form onSubmit={handleLogin} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 28, width: 340 }}>
+          <form onSubmit={handleLogin} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 28, width: 340, animation: "taller-fade-in 0.35s ease-out" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
               <div style={{ width: 32, height: 32, borderRadius: 7, background: COLORS.accent, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <Wrench size={17} color="#1C0D04" />
