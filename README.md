@@ -40,11 +40,20 @@ git push -u origin main
 4. Railway te dará una URL pública
 
 ### 4. Activar Authentication en Firebase (para el panel admin)
-El panel usa un usuario local (`TallerAdmin`) definido directamente en el código (`src/App.jsx`, constantes `LOCAL_USERNAME` y `LOCAL_PASSWORD`), no un correo real. Aun así, necesitas activar el método **Anónimo** en Firebase para que la app pueda conectarse a Firestore de forma segura:
+El panel usa cuentas locales definidas directamente en el código (`src/App.jsx`, constante `CUENTAS`), no correos reales. Aun así, necesitas activar el método **Anónimo** en Firebase para que la app pueda conectarse a Firestore de forma segura:
 1. Firebase Console → **Authentication** → **Sign-in method** → activa **Anonymous**
 2. Eso es todo — no necesitas crear ningún usuario en la pestaña "Users"
 
-Para cambiar el usuario o la contraseña del panel más adelante, edita esas dos constantes en `src/App.jsx` y vuelve a publicar.
+**Cuentas y roles:** hay dos cuentas configuradas por defecto en la constante `CUENTAS` de `src/App.jsx`:
+
+| Usuario | Contraseña | Rol | Permisos |
+|---|---|---|---|
+| `TallerAdmin` | `Taller2026$` | Administrador | Acceso completo — puede crear, editar y eliminar en todos los módulos |
+| `Mecanico` | `Mecanico2026$` | Mecánico | Puede ver todos los módulos, pero no crear/editar/eliminar nada. En Facturación puede ver, imprimir y enviar por correo, pero no generar ni borrar facturas |
+
+Cuando un mecánico intenta hacer algo restringido (crear un cliente, editar el inventario, generar una factura, etc.), la app le muestra un cuadro pidiendo el usuario y la contraseña del administrador — si los ingresa correctamente, la acción se ejecuta esa vez; si no, se cancela. Esto se maneja con la función `conAutorizacion(...)` que envuelve cada botón de crear/editar/eliminar.
+
+Para cambiar las contraseñas, agregar más cuentas, o cambiar qué puede hacer cada rol, edita el arreglo `CUENTAS` (y la lógica de `conAutorizacion` si quieres afinar permisos módulo por módulo) en `src/App.jsx` y vuelve a publicar. **Cambia las contraseñas por defecto antes de darle la app a tu equipo.**
 
 ### 5. Reglas de seguridad de Firestore
 En Firebase → Firestore Database → Reglas:

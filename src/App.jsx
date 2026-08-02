@@ -18,9 +18,14 @@ import {
   FileText, Printer,
 } from "lucide-react";
 
-// Usuario local del panel de administración (no requiere correo real)
-const LOCAL_USERNAME = "TallerAdmin";
-const LOCAL_PASSWORD = "Taller2026$";
+// Cuentas del panel (no requieren correo real). El rol "mecanico" tiene acceso de solo
+// lectura a la mayoría de módulos; para crear/editar/eliminar algo se le pide autorización
+// del usuario admin (ver conAutorizacion más abajo).
+const CUENTAS = [
+  { usuario: "TallerAdmin", clave: "Taller2026$", rol: "admin" },
+  { usuario: "Mecanico", clave: "Mecanico2026$", rol: "mecanico" },
+];
+const CUENTA_ADMIN = CUENTAS.find((c) => c.rol === "admin");
 
 const NAV = [
   { id: "dashboard", label: "Panel", icon: BarChart3 },
@@ -198,16 +203,20 @@ function registrarFuentePDF(docPdf) {
 export default function App() {
   const [view, setView] = useState("dashboard");
   const [user, setUser] = useState(undefined); // undefined = cargando, null = sin sesión
+  const [rol, setRol] = useState(null); // "admin" | "mecanico"
   const [loginUsuario, setLoginUsuario] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [saveError, setSaveError] = useState("");
+  const esAdmin = rol === "admin";
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       // Solo se considera "con sesión" si además pasó la validación local
-      const sesionLocal = localStorage.getItem("taller_admin_session") === "1";
+      const rolGuardado = localStorage.getItem("taller_rol");
+      const sesionLocal = localStorage.getItem("taller_admin_session") === "1" && !!rolGuardado;
       setUser(u && sesionLocal ? u : null);
+      setRol(u && sesionLocal ? rolGuardado : null);
     });
     return () => unsub();
   }, []);
@@ -215,22 +224,61 @@ export default function App() {
   async function handleLogin(e) {
     e.preventDefault();
     setLoginError("");
-    if (loginUsuario !== LOCAL_USERNAME || loginPassword !== LOCAL_PASSWORD) {
+    const cuenta = CUENTAS.find((c) => c.usuario === loginUsuario && c.clave === loginPassword);
+    if (!cuenta) {
       setLoginError("Usuario o contraseña incorrectos.");
       return;
     }
     try {
       await signInAnonymously(auth);
       localStorage.setItem("taller_admin_session", "1");
+      localStorage.setItem("taller_rol", cuenta.rol);
       setUser(auth.currentUser);
+      setRol(cuenta.rol);
     } catch (err) {
       setLoginError("No se pudo iniciar sesión. Intenta de nuevo.");
     }
   }
   async function handleLogout() {
     localStorage.removeItem("taller_admin_session");
+    localStorage.removeItem("taller_rol");
     await signOut(auth);
     setUser(null);
+    setRol(null);
+  }
+
+  // ---------- Autorización de administrador (para que un mecánico pueda hacer algo restringido) ----------
+  const [showGateModal, setShowGateModal] = useState(false);
+  const [gateUsuario, setGateUsuario] = useState("");
+  const [gateClave, setGateClave] = useState("");
+  const [gateError, setGateError] = useState("");
+  const [gateAccionPendiente, setGateAccionPendiente] = useState(null);
+
+  // Envuelve una acción (crear/editar/eliminar) para que solo el admin la ejecute directo;
+  // si quien está conectado es un mecánico, primero le pide usuario y contraseña de admin.
+  function conAutorizacion(accion) {
+    return (...args) => {
+      if (esAdmin) {
+        accion(...args);
+        return;
+      }
+      setGateError("");
+      setGateUsuario("");
+      setGateClave("");
+      setGateAccionPendiente(() => () => accion(...args));
+      setShowGateModal(true);
+    };
+  }
+  function confirmarAutorizacion(e) {
+    e.preventDefault();
+    if (gateUsuario === CUENTA_ADMIN.usuario && gateClave === CUENTA_ADMIN.clave) {
+      setShowGateModal(false);
+      const accion = gateAccionPendiente;
+      setGateAccionPendiente(null);
+      if (accion) accion();
+    } else {
+      setGateError("Usuario o contraseña de administrador incorrectos.");
+    }
   }
 
   // Colecciones
@@ -898,7 +946,13 @@ export default function App() {
             </div>
           );
         })}
-        <div onClick={handleLogout} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 6, cursor: "pointer", marginTop: 14, fontSize: 13.5, color: COLORS.textSecondary, borderTop: `1px solid ${COLORS.border}`, paddingTop: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 10px", marginTop: 14, borderTop: `1px solid ${COLORS.border}`, paddingTop: 14 }}>
+          <Lock size={12} color={COLORS.textSecondary} />
+          <span style={{ fontSize: 11.5, color: COLORS.textSecondary }}>
+            Conectado como <strong style={{ color: COLORS.textPrimary }}>{esAdmin ? "Administrador" : "Mecánico"}</strong>
+          </span>
+        </div>
+        <div onClick={handleLogout} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 6, cursor: "pointer", fontSize: 13.5, color: COLORS.textSecondary }}>
           <LogOut size={16} /> Cerrar sesión
         </div>
       </div>
@@ -945,7 +999,7 @@ export default function App() {
         {view === "clientes" && (
           <div>
             <PageHeader title="Clientes" subtitle={`${clientes.length} clientes registrados`}
-              action={<button onClick={openNewCliente} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo cliente</button>} />
+              action={<button onClick={conAutorizacion(openNewCliente)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo cliente</button>} />
             <div style={{ position: "relative", marginBottom: 16 }}>
               <Search size={15} style={{ position: "absolute", left: 11, top: 11, color: COLORS.textSecondary }} />
               <input placeholder="Buscar por nombre o teléfono..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, paddingLeft: 34, marginBottom: 0 }} />
@@ -970,9 +1024,9 @@ export default function App() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <TicketBadge n={i + 1} />
-                    <button onClick={() => openNewVehiculo(c.id)} title="Agregar vehículo" style={{ ...btnGhost, marginLeft: 8 }}><Car size={14} /></button>
-                    <button onClick={() => openEditCliente(c)} title="Editar" style={btnGhost}><Edit2 size={14} /></button>
-                    <button onClick={() => deleteCliente(c.id)} title="Eliminar" style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
+                    <button onClick={conAutorizacion(() => openNewVehiculo(c.id))} title="Agregar vehículo" style={{ ...btnGhost, marginLeft: 8 }}><Car size={14} /></button>
+                    <button onClick={conAutorizacion(() => openEditCliente(c))} title="Editar" style={btnGhost}><Edit2 size={14} /></button>
+                    <button onClick={conAutorizacion(() => deleteCliente(c.id))} title="Eliminar" style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
                   </div>
                 </div>
               ))}
@@ -984,7 +1038,7 @@ export default function App() {
         {view === "vehiculos" && (
           <div>
             <PageHeader title="Vehículos" subtitle={`${vehiculos.length} vehículos registrados`}
-              action={<button onClick={() => openNewVehiculo(null)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo vehículo</button>} />
+              action={<button onClick={conAutorizacion(() => openNewVehiculo(null))} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo vehículo</button>} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
               {vehiculos.map((v, i) => {
                 const cliente = clientes.find((c) => c.id === v.clienteId);
@@ -999,8 +1053,8 @@ export default function App() {
                     <div style={{ borderTop: `1px dashed ${COLORS.border}`, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div style={{ fontSize: 12.5, color: "#9AA3A8", display: "flex", alignItems: "center", gap: 5 }}><Users size={12} /> {cliente ? cliente.nombre : "Sin cliente"}</div>
                       <div style={{ display: "flex", gap: 4 }}>
-                        <button onClick={() => openEditVehiculo(v)} style={btnGhost}><Edit2 size={13} /></button>
-                        <button onClick={() => deleteVehiculo(v.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={13} /></button>
+                        <button onClick={conAutorizacion(() => openEditVehiculo(v))} style={btnGhost}><Edit2 size={13} /></button>
+                        <button onClick={conAutorizacion(() => deleteVehiculo(v.id))} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={13} /></button>
                       </div>
                     </div>
                   </div>
@@ -1014,7 +1068,7 @@ export default function App() {
         {view === "agenda" && (
           <div>
             <PageHeader title="Agenda" subtitle={`${citas.length} citas registradas`}
-              action={<button onClick={openNewCita} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva cita</button>} />
+              action={<button onClick={conAutorizacion(openNewCita)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva cita</button>} />
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {citasOrdenadas.map((c) => {
                 const cliente = clientes.find((x) => x.id === c.clienteId);
@@ -1034,9 +1088,9 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span onClick={() => toggleEstadoCita(c)} style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, cursor: "pointer", color: estadoColor, border: `1px solid ${estadoColor}`, textTransform: "capitalize" }}>{c.estado || "pendiente"}</span>
-                      <button onClick={() => openEditCita(c)} style={btnGhost}><Edit2 size={14} /></button>
-                      <button onClick={() => deleteCita(c.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
+                      <span onClick={conAutorizacion(() => toggleEstadoCita(c))} style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, cursor: "pointer", color: estadoColor, border: `1px solid ${estadoColor}`, textTransform: "capitalize" }}>{c.estado || "pendiente"}</span>
+                      <button onClick={conAutorizacion(() => openEditCita(c))} style={btnGhost}><Edit2 size={14} /></button>
+                      <button onClick={conAutorizacion(() => deleteCita(c.id))} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
                     </div>
                   </div>
                 );
@@ -1049,7 +1103,7 @@ export default function App() {
         {view === "ordenes" && (
           <div>
             <PageHeader title="Órdenes de trabajo" subtitle={`${ordenes.length} órdenes registradas`}
-              action={<button onClick={openNewOrden} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva orden</button>} />
+              action={<button onClick={conAutorizacion(openNewOrden)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva orden</button>} />
 
             <div style={{ background: COLORS.surface, border: `1px dashed ${COLORS.border}`, borderRadius: 9, padding: 14, marginBottom: 16 }}>
               <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginBottom: 10 }}>Catálogo de servicios del taller</div>
@@ -1057,7 +1111,7 @@ export default function App() {
                 {servicios.map((s) => (
                   <span key={s.id} style={{ fontSize: 12, background: COLORS.surfaceRaised, borderRadius: 20, padding: "5px 10px", display: "flex", alignItems: "center", gap: 6 }}>
                     {s.nombre} · {money(s.precio)}
-                    <X size={11} style={{ cursor: "pointer", color: COLORS.textSecondary }} onClick={() => eliminarServicio(s.id)} />
+                    <X size={11} style={{ cursor: "pointer", color: COLORS.textSecondary }} onClick={conAutorizacion(() => eliminarServicio(s.id))} />
                   </span>
                 ))}
                 {servicios.length === 0 && <span style={{ fontSize: 12.5, color: COLORS.textSecondary }}>Aún no has agregado servicios.</span>}
@@ -1065,7 +1119,7 @@ export default function App() {
               <div style={{ display: "flex", gap: 8 }}>
                 <input autoComplete="off" placeholder="Nombre del servicio" value={nuevoServicioNombre} onChange={(e) => setNuevoServicioNombre(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 2 }} />
                 <input autoComplete="off" placeholder="Precio" value={nuevoServicioPrecio} onChange={(e) => setNuevoServicioPrecio(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
-                <button onClick={agregarServicio} style={{ ...btnPrimary, width: "auto", padding: "0 14px" }}>Agregar</button>
+                <button onClick={conAutorizacion(agregarServicio)} style={{ ...btnPrimary, width: "auto", padding: "0 14px" }}>Agregar</button>
               </div>
             </div>
 
@@ -1087,7 +1141,7 @@ export default function App() {
                       </div>
                       <div style={{ textAlign: "right" }}>
                         <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 17, fontWeight: 600 }}>{money(o.costoTotal)}</div>
-                        <select value={o.estado} onChange={(e) => cambiarEstadoOrden(o, e.target.value)}
+                        <select value={o.estado} onChange={(e) => conAutorizacion(cambiarEstadoOrden)(o, e.target.value)}
                           style={{ marginTop: 6, fontSize: 11.5, background: "transparent", color: estadoColor, border: `1px solid ${estadoColor}`, borderRadius: 20, padding: "3px 8px" }}>
                           <option value="abierta">Abierta</option>
                           <option value="en_progreso">En progreso</option>
@@ -1096,8 +1150,8 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 4, marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 }}>
-                      <button onClick={() => openEditOrden(o)} style={btnGhost}><Edit2 size={13} /></button>
-                      <button onClick={() => deleteOrden(o.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={13} /></button>
+                      <button onClick={conAutorizacion(() => openEditOrden(o))} style={btnGhost}><Edit2 size={13} /></button>
+                      <button onClick={conAutorizacion(() => deleteOrden(o.id))} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={13} /></button>
                     </div>
                   </div>
                 );
@@ -1110,7 +1164,7 @@ export default function App() {
         {view === "revisiones" && (
           <div>
             <PageHeader title="Revisión de entrada y salida" subtitle={`${revisiones.length} revisiones registradas`}
-              action={<button onClick={openNewRevision} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva revisión</button>} />
+              action={<button onClick={conAutorizacion(openNewRevision)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nueva revisión</button>} />
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {revisiones.map((r) => {
                 const o = ordenes.find((x) => x.id === r.ordenId);
@@ -1126,7 +1180,7 @@ export default function App() {
                         {items.length > 0 && <div style={{ fontSize: 12, color: "#7A848C", marginTop: 4 }}>Verificado: {items.join(", ")}</div>}
                         {r.notas && <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginTop: 6, fontStyle: "italic" }}>"{r.notas}"</div>}
                       </div>
-                      <button onClick={() => deleteRevision(r.id)} style={{ ...btnGhost, color: COLORS.danger, height: 28 }}><Trash2 size={13} /></button>
+                      <button onClick={conAutorizacion(() => deleteRevision(r.id))} style={{ ...btnGhost, color: COLORS.danger, height: 28 }}><Trash2 size={13} /></button>
                     </div>
                   </div>
                 );
@@ -1139,7 +1193,7 @@ export default function App() {
         {view === "inventario" && (
           <div>
             <PageHeader title="Inventario de repuestos" subtitle={`${repuestos.length} repuestos registrados`}
-              action={<button onClick={openNewRepuesto} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo repuesto</button>} />
+              action={<button onClick={conAutorizacion(openNewRepuesto)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo repuesto</button>} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
               {repuestos.map((r) => {
                 const proveedor = proveedores.find((p) => p.id === r.proveedorId);
@@ -1160,8 +1214,8 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 4, marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 }}>
-                      <button onClick={() => openEditRepuesto(r)} style={btnGhost}><Edit2 size={13} /></button>
-                      <button onClick={() => deleteRepuesto(r.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={13} /></button>
+                      <button onClick={conAutorizacion(() => openEditRepuesto(r))} style={btnGhost}><Edit2 size={13} /></button>
+                      <button onClick={conAutorizacion(() => deleteRepuesto(r.id))} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={13} /></button>
                     </div>
                   </div>
                 );
@@ -1174,7 +1228,7 @@ export default function App() {
         {view === "proveedores" && (
           <div>
             <PageHeader title="Proveedores" subtitle={`${proveedores.length} proveedores registrados`}
-              action={<button onClick={openNewProveedor} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo proveedor</button>} />
+              action={<button onClick={conAutorizacion(openNewProveedor)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Nuevo proveedor</button>} />
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {proveedores.map((p) => (
                 <div key={p.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1187,8 +1241,8 @@ export default function App() {
                     {p.suministra && <div style={{ fontSize: 12, color: "#7A848C", marginTop: 4 }}>Suministra: {p.suministra}</div>}
                   </div>
                   <div style={{ display: "flex", gap: 4 }}>
-                    <button onClick={() => openEditProveedor(p)} style={btnGhost}><Edit2 size={14} /></button>
-                    <button onClick={() => deleteProveedor(p.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
+                    <button onClick={conAutorizacion(() => openEditProveedor(p))} style={btnGhost}><Edit2 size={14} /></button>
+                    <button onClick={conAutorizacion(() => deleteProveedor(p.id))} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
                   </div>
                 </div>
               ))}
@@ -1200,7 +1254,7 @@ export default function App() {
         {view === "facturacion" && (
           <div>
             <PageHeader title="Facturación" subtitle={`${facturas.length} facturas emitidas`}
-              action={<button onClick={openNewFactura} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Generar factura</button>} />
+              action={<button onClick={conAutorizacion(openNewFactura)} style={{ ...btnPrimary, width: "auto", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Generar factura</button>} />
             {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 14, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "10px 14px" }}>{saveError}</div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {facturas.map((f, i) => {
@@ -1221,7 +1275,7 @@ export default function App() {
                       {f.estadoEnvio !== "enviada" && (
                         <button onClick={() => marcarEnviada(f)} title="Enviar por correo" style={btnGhost}><Send size={14} /></button>
                       )}
-                      <button onClick={() => deleteFactura(f.id)} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
+                      <button onClick={conAutorizacion(() => deleteFactura(f.id))} style={{ ...btnGhost, color: COLORS.danger }}><Trash2 size={14} /></button>
                     </div>
                   </div>
                 );
@@ -1452,6 +1506,25 @@ export default function App() {
           <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 14 }}>Se generará como <strong>{formatoNumeroFactura(siguienteNumeroFactura())}</strong>. Después de guardar, podrás ver e imprimir el PDF desde la lista.</div>
           {saveError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{saveError}</div>}
           <button style={btnPrimary} onClick={saveFactura}>Guardar factura</button>
+        </Modal>
+      )}
+
+      {showGateModal && (
+        <Modal title="Autorización de administrador" onClose={() => { setShowGateModal(false); setGateAccionPendiente(null); }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, color: COLORS.textSecondary, fontSize: 13 }}>
+            <Lock size={15} />
+            Esta acción requiere el usuario y la contraseña del administrador.
+          </div>
+          <form onSubmit={confirmarAutorizacion}>
+            <FieldLabel>Usuario admin</FieldLabel>
+            <input autoComplete="off" style={inputStyle} value={gateUsuario} onChange={(e) => setGateUsuario(e.target.value)} placeholder="TallerAdmin" />
+            <FieldLabel>Contraseña admin</FieldLabel>
+            <input autoComplete="off" type="password" style={inputStyle} value={gateClave} onChange={(e) => setGateClave(e.target.value)} placeholder="••••••••" />
+            {gateError && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 10 }}>{gateError}</div>}
+            <button type="submit" style={{ ...btnPrimary, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <Lock size={14} /> Autorizar
+            </button>
+          </form>
         </Modal>
       )}
       </>
